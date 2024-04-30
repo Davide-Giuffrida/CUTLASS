@@ -100,6 +100,7 @@ cudaError_t CutlassSgemmNN(
 
   using ColumnMajor = cutlass::layout::ColumnMajor;
 
+  // parameters not set will be assigned to the default values
   using CutlassGemm = cutlass::gemm::device::Gemm<float,        // Data-type of A matrix
                                                   ColumnMajor,  // Layout of A matrix
                                                   float,        // Data-type of B matrix

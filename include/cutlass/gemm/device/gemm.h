@@ -179,6 +179,8 @@ template <
     typename ElementC_,
     /// Layout type for C and D matrix operands
     typename LayoutC_,
+
+    // from here on there are parameters that have a default value
     /// Element type for internal accumulation
     typename ElementAccumulator_ = ElementC_,
     /// Operator class tag
@@ -295,7 +297,7 @@ class Gemm {
     // Data members
     //
 
-    GemmCoord problem_size;
+    GemmCoord problem_size; // defined in include/gemm/gemm_coord.h
     TensorRef<ElementA const, LayoutA> ref_A;
     TensorRef<ElementB const, LayoutB> ref_B;
     TensorRef<ElementC const, LayoutC> ref_C;
@@ -471,14 +473,35 @@ public:
 
   /// Runs the kernel using initialized state.
   Status run(cudaStream_t stream = nullptr) {
+    
+    /* A first possible implementation of a time redundancy mechanism could be done at this level (the top one),
+    it would imply changing the kernel invocation to execute multiple copies of the functionality implemented by the single blocks.
+    It could be done by calling some further CudaMemAlloc and CudaMemCpy to allocate copies of the D matrix, then we should 
+    redefine the dim3 to resize the grid and the kThreadCount (or maybe we could simply repeat the kernel invocation twice),
+    In alternative, it could be possible to modify the way in which the mma PTX instruction is called, either by simply triplicating it
+    or by calling it in multiple copies in different blocks. In order to reach the thread level call for the tensor operation you must follow:
+      default_gemm --> default_mma --> mma_core --> mma_simt --> mma (thread) --> mma (arch) --> NO, we are not relying on execution of SIMT instructions
+      default_gemm --> default_mma --> mma_core(default_mma_core_sm80.h) --> DafaultMmaTensorOp (default_mma_tensor_op_sm80.h) --> MmaTensorOp (mma_tensor_op.h)
+                                                                                                                               --> Mma (arch/mma_sm80.h)
+    The actual code call is perform in gemm.h/kernel, where the operator that corresponds to the actual kernel is defined.
+    The Gemm defined in gemm.h/kernel receives as a parameter the Mma operator defined in the default_gemm.h, which is the actual Mma operator
+    customized for tensor cores.
+    */
 
     ThreadblockSwizzle threadblock_swizzle;
 
+    // the params_ is one of the parameters that are passed to the template, it is defined in the .cu file
     dim3 grid = threadblock_swizzle.get_grid_shape(params_.grid_tiled_shape);
+
+    // kThreadCount is defined inside the Gemm operator definition in include/kernel/gemm.h (kernel namespace)
+    // this value depends on WarpCount, that is defined inside default_mma_core_sm80.h (cutlass/gemm/threadblock)
+    // which depends on kCount, a value that is defined by the size of the problem specified as input paramter for the program 
+    // (kCount is in include/cutlass/gemm_coord.h)
     dim3 block(GemmKernel::kThreadCount, 1, 1);
 
     cudaError_t result;
 
+    // this is a characteristic of the specific CUDA architecture
     int smem_size = int(sizeof(typename GemmKernel::SharedStorage));
 
     if (smem_size >= (48 << 10)) {
@@ -491,6 +514,7 @@ public:
       }
     }
 
+    // the third parameter represents the amount of shared memory that is allocated per block (it is done automatically when the kernel is launched)
     cutlass::Kernel<GemmKernel><<<grid, block, smem_size, stream>>>(params_);
 
     result = cudaGetLastError();

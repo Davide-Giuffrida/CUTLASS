@@ -66,6 +66,7 @@ struct Gemm {
 
   /// Warp count (concept: GemmShape)
   using WarpCount = typename Mma::WarpCount;
+  // defined in include/cutlass/gemm_coord.h
   static int const kThreadCount = 32 * WarpCount::kCount;
 
   /// Parameters structure
@@ -270,8 +271,10 @@ struct Gemm {
 
     accumulators.clear();
 
+    // this is related to a single block
     if (!kSplitKSerial || gemm_k_iterations > 0) {
       // Compute threadblock-scoped matrix multiply-add
+      // the iterations over all the blocks are done through the iterators (they move through the two matrices)
       mma(gemm_k_iterations, accumulators, iterator_A, iterator_B, accumulators);
     }
 
