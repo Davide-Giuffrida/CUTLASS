@@ -353,6 +353,79 @@ private:
   /// Kernel parameters object
   typename GemmKernel::Params params_;
 
+  /// Allocates device memory for a matrix then fills with arbitrary small integers.
+  cudaError_t AllocateMatrix(float **matrix, int rows, int columns) {
+    cudaError_t result;
+
+    size_t sizeof_matrix = sizeof(float) * rows * columns;
+
+    // Allocate device memory.
+    result = cudaMalloc(reinterpret_cast<void **>(dstMatrix), sizeof_matrix);
+
+    if (result != cudaSuccess) {
+      return result;
+    }
+
+    // Clear the allocation.
+    /*result = cudaMemset(*matrix, 0, sizeof_matrix);
+
+    if (result != cudaSuccess) {
+      std::cerr << "Failed to clear matrix device memory: "
+        << cudaGetErrorString(result) << std::endl;
+      return result;
+    }*/
+
+    // Initialize matrix elements to arbitrary small integers.
+    /*result = InitializeMatrix(*matrix, rows, columns, seed);
+
+    if (result != cudaSuccess) {
+      std::cerr << "Failed to initialize matrix: "
+        << cudaGetErrorString(result) << std::endl;
+      return result;
+    }*/
+
+    return result;
+  }
+
+  /// Kernel to initialize a matrix with small integers.
+  __global__ void CopyMatrix_kernel(
+    float *dstMatrix,
+    float *srcMatrix,
+    int rows,
+    int columns) {
+
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+    int j = threadIdx.y + blockIdx.y * blockDim.y;
+
+    if (i < rows && j < columns) {
+      int offset = i + j * rows;
+
+      dstMatrix[offset] = srcMatrix[offset];
+    }
+  }
+
+  /// Copy the content of a matrix into another
+  cudaError_t CopyMatrix(float **dstMatrix,float* srcMatrix, int rows, int columns, cudaStream_t stream = nullptr) {
+    cudaError_t result;
+  
+    // Allocate dst matrix
+    result = AllocateMatrix(dstMatrix,rows,columns);
+
+    if (result !=  cudaSuccess) {
+      std::cerr << "Failed to allocate matrix: "
+        << cudaGetErrorString(result) << std::endl;
+      return result;
+    }
+    // Copy matrix
+    /* TODO:  dynamically allocated shared memory (3rd kernel parameter) shouldn't be necessary
+              since we already know the matrixes dimension.
+              Statically alloc. smem should be enough if we want to use it.
+    */
+    CopyMatrix_kernel<<grid, block, 0, stream>>(dstMatrix, srcMatrix, rows, columns);
+
+    return cudaGetLastError();
+  }
+
 public:
 
   /// Constructs the GEMM.
@@ -533,8 +606,16 @@ public:
     void *workspace = nullptr, 
     cudaStream_t stream = nullptr) {
     
-    Status status = initialize(args, workspace, stream);
-    
+    CutlassGemm::Arguments args1({M , N, K},  // Gemm Problem dimensions
+                              {A, lda},    // Tensor-ref for source matrix A
+                              {B, ldb},    // Tensor-ref for source matrix B
+                              {C, ldc},    // Tensor-ref for source matrix C
+                              {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                              {alpha, beta}); // Scalars used in the Epilogue 
+    Status status1 = initialize(args, workspace, stream);
+    Status status2 = initialize();
+    Status status3 = initialize();
+
     if (status == Status::kSuccess) {
       status = run(stream);
     }
