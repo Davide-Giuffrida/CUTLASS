@@ -362,9 +362,9 @@ private:
     // Allocate device memory.
     result = cudaMalloc(reinterpret_cast<void **>(dstMatrix), sizeof_matrix);
 
-    if (result != cudaSuccess) {
+    /*if (result != cudaSuccess) {
       return result;
-    }
+    }*/
 
     // Clear the allocation.
     /*result = cudaMemset(*matrix, 0, sizeof_matrix);
@@ -387,7 +387,7 @@ private:
     return result;
   }
 
-  /// Kernel to initialize a matrix with small integers.
+  /// Kernel to copy a matrix into another.
   __global__ void CopyMatrix_kernel(
     float *dstMatrix,
     float *srcMatrix,
@@ -412,8 +412,6 @@ private:
     result = AllocateMatrix(dstMatrix,rows,columns);
 
     if (result !=  cudaSuccess) {
-      std::cerr << "Failed to allocate matrix: "
-        << cudaGetErrorString(result) << std::endl;
       return result;
     }
     // Copy matrix
@@ -422,8 +420,27 @@ private:
               Statically alloc. smem should be enough if we want to use it.
     */
     CopyMatrix_kernel<<grid, block, 0, stream>>(dstMatrix, srcMatrix, rows, columns);
-
+    
+    // Returns static errors during the kernel allocation since there is no synch that would allow to
+    // wait for detection of errors during the kernel computation 
     return cudaGetLastError();
+  }
+
+  /// TODO: Kernel to check matrices equivalence.
+  __global__ void CompareMatrix_kernel(
+    float *matrixA,
+    float *matrixB,
+    int rows,
+    int columns) {
+
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+    int j = threadIdx.y + blockIdx.y * blockDim.y;
+
+    if (i < rows && j < columns) {
+      int offset = i + j * rows;
+
+      dstMatrix[offset] = srcMatrix[offset];
+    }
   }
 
 public:
@@ -606,21 +623,84 @@ public:
     void *workspace = nullptr, 
     cudaStream_t stream = nullptr) {
     
-    CutlassGemm::Arguments args1({M , N, K},  // Gemm Problem dimensions
-                              {A, lda},    // Tensor-ref for source matrix A
-                              {B, ldb},    // Tensor-ref for source matrix B
-                              {C, ldc},    // Tensor-ref for source matrix C
-                              {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
-                              {alpha, beta}); // Scalars used in the Epilogue 
-    Status status1 = initialize(args, workspace, stream);
-    Status status2 = initialize();
-    Status status3 = initialize();
+    float* D[3]; // Additional matrices for TMR
+    cudaStream_t streams[3] = {stream, nullptr, nullptr}; // Streams for additional matrices
+    Status status[3]; // GEMMs return value
+    Arguments args_arr[3]; // Arguments
 
-    if (status == Status::kSuccess) {
-      status = run(stream);
+    //AllocateMatrix(float **matrix, int rows, int columns)
+    // Allocate additional matrices 
+    result = AllocateMatrix(&D[0], args.problem_size.kM, args.problem_size.kN);
+    
+    if(result != cudaSuccess){
+      return Status::kErrorInternal;
     }
 
-    return status;
+    result = AllocateMatrix(&D[1], args.problem_size.kM, args.problem_size.kN);
+    
+    if(result != cudaSuccess){
+      cudaFree(D[0]);
+      return Status::kErrorInternal;
+    }
+    
+    result = AllocateMatrix(&D[2], args.problem_size.kM, args.problem_size.kN);
+    
+    if(result != cudaSuccess){
+      cudaFree(D[0]);
+      cudaFree(D[1]);
+      return Status::kErrorInternal;
+    }
+
+    // Create additional streams for matrices operations
+    result = cudaStreamCreate(&streams[1]);
+
+    if(result != cudaSuccess){
+      cudaFree(D[0]);
+      cudaFree(D[1]);
+      cudaFree(D[2]);
+      return Status::kErrorInternal;
+    }
+
+    result = cudaStreamCreate(&streams[2]);
+
+    if(result != cudaSuccess){
+      cudaFree(D[0]);
+      cudaFree(D[1]);
+      cudaFree(D[2]);
+      cudaStreamDestroy(streams[1]);
+      return Status::kErrorInternal;
+    }
+    
+
+    workspace = nullptr; // Forced to nullptr since we don't know what it does
+#pragma unroll
+    for(int i=0;i<3;i++){
+      args_arr[i](args.problem_size,  // Gemm Problem dimensions
+              args.ref_A,    // Tensor-ref for source matrix A
+              args.ref_B,    // Tensor-ref for source matrix B
+              args.ref_C,    // Tensor-ref for source matrix C
+              {D[i], args.ref_D.layout()},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+              {*args.epilogue.alpha_ptr, *args.epilogue.beta_ptr}); // Scalars used in the Epilogue
+      status[i] = initialize(args_arr[i], workspace, streams[i]);
+      if (status[i] == Status::kSuccess) {
+        status[i] = run(stream[i]);
+      }
+      else break;
+    }
+
+    cudaDeviceSynchronize();
+
+    // Operation results check
+    // TODO:
+
+    // Free resources
+    cudaFree(D[0]);
+    cudaFree(D[1]);
+    cudaFree(D[2]);
+    cudaStreamDestroy(streams[1]);
+    cudaStreamDestroy(streams[2]);
+
+    return Status::kSuccess;
   }
 };
 
