@@ -580,7 +580,8 @@ public:
 
     ThreadblockSwizzle threadblock_swizzle;
 
-    // the params_ is one of the parameters that are passed to the template, it is defined in the .cu file
+    // the params_ is one of the parameters that are passed to the template, it is defined as a type in ell_gemm.h
+    // and initialized in the Initialize() function
     dim3 grid = threadblock_swizzle.get_grid_shape(params_.grid_tiled_shape);
 
     // kThreadCount is defined inside the Gemm operator definition in include/kernel/gemm.h (kernel namespace)
@@ -590,7 +591,7 @@ public:
     dim3 block(GemmKernel::kThreadCount, 1, 1);
 
     cudaError_t result;
-
+    
     // this is a characteristic of the specific CUDA architecture
     int smem_size = int(sizeof(typename GemmKernel::SharedStorage));
 
@@ -932,6 +933,7 @@ public:
   }
 
   /// Runs the kernel using initialized state.
+  // This is a redefinition of the parenthesis operator, which is called in cutlass::Status status = gemm_operator(args); from the basic_gemm.cu
   Status operator()(
     Arguments const &args, 
     void *workspace = nullptr, 
