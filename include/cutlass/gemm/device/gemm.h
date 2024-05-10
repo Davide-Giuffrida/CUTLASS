@@ -426,21 +426,44 @@ private:
     return cudaGetLastError();
   }
 
-  /// TODO: Kernel to check matrices equivalence.
+  /// Kernel to check matrices equivalence.
   __global__ void CompareMatrix_kernel(
-    float *matrixA,
-    float *matrixB,
+    bool *dstMatrix,
+    float *srcMatrixA,
+    float *srcMatrixB,
     int rows,
     int columns) {
 
     int i = threadIdx.x + blockIdx.x * blockDim.x;
-    int j = threadIdx.y + blockIdx.y * blockDim.y;
-
-    if (i < rows && j < columns) {
-      int offset = i + j * rows;
-
-      dstMatrix[offset] = srcMatrix[offset];
+    if(i < rows){
+      int j = threadIdx.y + blockIdx.y * blockDim.y;
+      if(j < columns){
+        int offset = i + j*rows;
+        dstMatrix[offset] = (srcMatrixA[offset] == srcMatrixB[offset])? 1:0;
+      }
     }
+  }
+
+
+  /// Kernel to reduce matrix to one element
+  // Maximum matrix elements supported: 2^32
+  __global__ int ReduceMatrix_kernel(
+    float *matrix,
+    int   rows,
+    int   columns,
+    int   stride
+  )
+  {
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+    if(i <  rows){
+      int ja = threadIdx.y + blockIdx.y * blockDim.y;
+      int jb = ja + 1; // Element to the right on the same row 
+      if(jb < columns){
+        int offset_left = i + ja * rows;
+
+      }
+    }
+    return
   }
 
 public:
@@ -595,6 +618,10 @@ public:
     // this is a characteristic of the specific CUDA architecture
     int smem_size = int(sizeof(typename GemmKernel::SharedStorage));
 
+    /*  Redefine the maximum size of the dynamically allocated memory for Kernel<GemmKernel>
+        48KB is the default dynamically allocated shared memory size, everything above this value is
+        architecture dependent so it requires the redefinition of the maximum dynamic shared memory
+    */  
     if (smem_size >= (48 << 10)) {
       result = cudaFuncSetAttribute(Kernel<GemmKernel>,
                                     cudaFuncAttributeMaxDynamicSharedMemorySize,
@@ -624,10 +651,10 @@ public:
     void *workspace = nullptr, 
     cudaStream_t stream = nullptr) {
     
-    float* D[3]; // Additional matrices for TMR
-    cudaStream_t streams[3] = {stream, nullptr, nullptr}; // Streams for additional matrices
-    Status status[3]; // GEMMs return value
-    Arguments args_arr[3]; // Arguments
+    float* D[TMR]; // Additional matrices for TMR
+    cudaStream_t streams[TMR] = {stream, nullptr, nullptr}; // Streams for additional matrices
+    Status status[TMR]; // GEMMs return value
+    Arguments args_arr[TMR]; // Arguments
 
     //AllocateMatrix(float **matrix, int rows, int columns)
     // Allocate additional matrices 
@@ -674,7 +701,13 @@ public:
     
 
     workspace = nullptr; // Forced to nullptr since we don't know what it does
-#pragma unroll
+
+    /*  The operations inside the loop need to be done in that specific order for each destination matrix
+        since, otherwise, the params_ structure would be overwritten by the 'initialize' method.
+        This means that, for example, it is not possible to initialize the args for each matrix before
+        calling the 'run' method.
+    */ 
+    CUTLASS_PRAGMA_UNROLL
     for(int i=0;i<3;i++){
       args_arr[i](args.problem_size,  // Gemm Problem dimensions
               args.ref_A,    // Tensor-ref for source matrix A
