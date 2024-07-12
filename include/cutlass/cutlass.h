@@ -54,6 +54,7 @@ namespace cutlass {
 /// Status code returned by CUTLASS operations
 enum class Status {
   kSuccess,                    ///< Operation was successful.
+  kRedundancyError,            ///< Error in at least two redundant instances.
   kErrorMisalignedOperand,     ///< operands fail alignment requirements.
   kErrorInvalidDataType,       ///< DataType fails requirement.
   kErrorInvalidLayout,         ///< Layout fails alignment requirement.

@@ -405,15 +405,19 @@ private:
   }
 
   /// Copy the content of a matrix into another
-  cudaError_t CopyMatrix(float **dstMatrix,float* srcMatrix, int rows, int columns, cudaStream_t stream = nullptr) {
+  cudaError_t CopyMatrix(float *dstMatrix,float* srcMatrix, int rows, int columns, cudaStream_t stream = nullptr) {
     cudaError_t result;
   
     // Allocate dst matrix
-    result = AllocateMatrix(dstMatrix,rows,columns);
+    //result = AllocateMatrix(dstMatrix,rows,columns);
 
-    if (result !=  cudaSuccess) {
+    /*if (result !=  cudaSuccess) {
       return result;
     }
+    dim3 grid = threadblock_swizzle.get_grid_shape(params_.grid_tiled_shape);
+    dim3 block(GemmKernel::kThreadCount, 1, 1);
+    */
+
     // Copy matrix
     /* TODO:  dynamically allocated shared memory (3rd kernel parameter) shouldn't be necessary
               since we already know the matrixes dimension.
@@ -439,6 +443,7 @@ private:
       int j = threadIdx.y + blockIdx.y * blockDim.y;
       if(j < columns){
         int offset = i + j*rows;
+        // TODO: TRY TO REMOVE THE CONDITIONAL STATEMENT
         dstMatrix[offset] = (srcMatrixA[offset] == srcMatrixB[offset])? 1:0;
       }
     }
@@ -449,21 +454,21 @@ private:
   // Maximum matrix elements supported: 2^32
   __global__ int ReduceMatrix_kernel(
     float *matrix,
-    int   rows,
-    int   columns,
-    int   stride
+    int   elements
   )
   {
-    int i = threadIdx.x + blockIdx.x * blockDim.x;
-    if(i <  rows){
-      int ja = threadIdx.y + blockIdx.y * blockDim.y;
-      int jb = ja + 1; // Element to the right on the same row 
-      if(jb < columns){
-        int offset_left = i + ja * rows;
-
+    for (int i=0; i < int(log2(elements)); i++){
+      int ja = threadIdx.x * 2 + blockIdx.x * blockDim.x;
+      if(ja < elements){
+        if(ja + i + pow(2,i) < elements){
+          matrix[ja] = matrix[ja] + matrix[ja + i + pow(2,i)];
+        }
+      }
+      // delete all threads that are not needed anymore
+      if((ja + pow(2,i + 1)) % (pow(2,i + 2)) == 0){
+        return;
       }
     }
-    return
   }
 
 public:
@@ -609,7 +614,7 @@ public:
 
     // kThreadCount is defined inside the Gemm operator definition in include/kernel/gemm.h (kernel namespace)
     // this value depends on WarpCount, that is defined inside default_mma_core_sm80.h (cutlass/gemm/threadblock)
-    // which depends on kCount, a value that is defined by the size of the problem specified as input paramter for the program 
+    // which depends on kCount, a value that is defined by the size of the problem specified as input parameter for the program 
     // (kCount is in include/cutlass/gemm_coord.h)
     dim3 block(GemmKernel::kThreadCount, 1, 1);
 
@@ -652,9 +657,11 @@ public:
     cudaStream_t stream = nullptr) {
     
     float* D[TMR]; // Additional matrices for TMR
+    int* tmp[TMR]; // temporary matrices for storing the results of comparisons between matrix 1-2, 2-3 and 1-3
     cudaStream_t streams[TMR] = {stream, nullptr, nullptr}; // Streams for additional matrices
     Status status[TMR]; // GEMMs return value
     Arguments args_arr[TMR]; // Arguments
+    char res = 255; // the index of the matrix where the correct result is stored (the result should be copied)
 
     //AllocateMatrix(float **matrix, int rows, int columns)
     // Allocate additional matrices 
@@ -676,6 +683,36 @@ public:
     if(result != cudaSuccess){
       cudaFree(D[0]);
       cudaFree(D[1]);
+      return Status::kErrorInternal;
+    }
+    
+    result = AllocateMatrix(&tmp[0], args.problem_size.kM, args.problem_size.kN);
+    
+    if(result != cudaSuccess){
+      cudaFree(D[0]);
+      cudaFree(D[1]);
+      cudaFree(D[2]);
+      return Status::kErrorInternal;
+    }
+
+    result = AllocateMatrix(&tmp[1], args.problem_size.kM, args.problem_size.kN);
+    
+    if(result != cudaSuccess){
+      cudaFree(D[0]);
+      cudaFree(D[1]);
+      cudaFree(D[2]);
+      cudaFree(tmp[0]);
+      return Status::kErrorInternal;
+    }
+
+    result = AllocateMatrix(&tmp[2], args.problem_size.kM, args.problem_size.kN);
+    
+    if(result != cudaSuccess){
+      cudaFree(D[0]);
+      cudaFree(D[1]);
+      cudaFree(D[2]);
+      cudaFree(tmp[0]);
+      cudaFree(tmp[1]);
       return Status::kErrorInternal;
     }
 
@@ -708,8 +745,8 @@ public:
         calling the 'run' method.
     */ 
     CUTLASS_PRAGMA_UNROLL
-    for(int i=0;i<3;i++){
-      args_arr[i](args.problem_size,  // Gemm Problem dimensions
+    for(int i=0;i<TMR;i++){
+      args_arr[i] = (args.problem_size,  // Gemm Problem dimensions
               args.ref_A,    // Tensor-ref for source matrix A
               args.ref_B,    // Tensor-ref for source matrix B
               args.ref_C,    // Tensor-ref for source matrix C
@@ -725,12 +762,58 @@ public:
     cudaDeviceSynchronize();
 
     // Operation results check
-    // TODO:
+    
+    // redefine grid and block size
+    dim3 grid = threadblock_swizzle.get_grid_shape(params_.grid_tiled_shape);
+    dim3 block(GemmKernel::kThreadCount, 1, 1);
+    dim3 block_reduce(args.problem_size.kM*args.problem_size.kN/2, 1, 1);
+    
+    // call comparison kernels on different streams to make sure they are executed in parallel
+    CompareMatrix_kernel<<grid, block, 0, streams[0]>>(tmp[0],D[0],D[1],args.problem_size.kM,args.problem_size.kN);
+    CompareMatrix_kernel<<grid, block, 0, streams[1]>>(tmp[1],D[1],D[2],args.problem_size.kM,args.problem_size.kN);
+    CompareMatrix_kernel<<grid, block, 0, streams[2]>>(tmp[2],D[0],D[2],args.problem_size.kM,args.problem_size.kN);
+
+    ReduceMatrix_kernel<<block, 0, streams[0]>>(tmp[0],args.problem_size.kM*args.problem_size.kN);
+    ReduceMatrix_kernel<<block, 0, streams[1]>>(tmp[1],args.problem_size.kM*args.problem_size.kN);
+    ReduceMatrix_kernel<<block, 0, streams[2]>>(tmp[2],args.problem_size.kM*args.problem_size.kN);
+
+    cudaDeviceSynchronize();
+    
+    // handle odd sized arrays: you have to add up the last element of the matrix/array to the first one (the one where the result is stored)
+    if(args.problem_size.kM*args.problem_size.kN % 2 == 1){
+      *tmp[0] = *tmp[0] + *(tmp[0] + args.problem_size.kM*args.problem_size.kN - 1);
+      *tmp[1] = *tmp[1] + *(tmp[1] + args.problem_size.kM*args.problem_size.kN - 1);
+      *tmp[2] = *tmp[2] + *(tmp[2] + args.problem_size.kM*args.problem_size.kN - 1);
+    }
+
+    // actual checks
+    if(tmp[0] == tmp[1]){
+      res = 0; // or 1, it's the same
+    }else if(tmp[1] == tmp[2]){
+      res = 1; // or 1, it's the same
+    }else if(tmp[0] == tmp[2]){
+      res = 0; // or 1, it's the same
+    }
+    if(res == 255){
+      return Status::kRedundancyError;
+    }
+
+    // copy the result matrix in the real destination
+    if(res == 0){
+      CopyMatrix(args.ref_D,D[0],args.problem_size.kM, args.problem_size.kN,stream);
+    }else if(res == 1){
+      CopyMatrix(args.ref_D,D[1],args.problem_size.kM, args.problem_size.kN,stream);
+    }else if(res == 2){
+      CopyMatrix(args.ref_D,D[2],args.problem_size.kM, args.problem_size.kN,stream);
+    }
 
     // Free resources
     cudaFree(D[0]);
     cudaFree(D[1]);
     cudaFree(D[2]);
+    cudaFree(tmp[0]);
+    cudaFree(tmp[1]);
+    cudaFree(tmp[2]);
     cudaStreamDestroy(streams[1]);
     cudaStreamDestroy(streams[2]);
 
