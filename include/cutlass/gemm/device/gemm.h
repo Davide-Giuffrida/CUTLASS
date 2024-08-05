@@ -46,12 +46,71 @@
 #include "cutlass/gemm/device/default_gemm_configuration.h"
 
 #include "cutlass/layout/permute.h"
+#include <stdio.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
 
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace cutlass {
 namespace gemm {
 namespace device {
+
+  /// Kernel to copy a matrix into another.
+  __global__ void CopyMatrix_kernel(
+    float *dstMatrix,
+    float *srcMatrix,
+    int rows,
+    int columns) {
+
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+    int j = threadIdx.y + blockIdx.y * blockDim.y;
+
+    if (i < rows && j < columns) {
+      int offset = i + j * rows;
+
+      dstMatrix[offset] = srcMatrix[offset];
+    }
+  }
+
+  // TODO: THE KERNEL DOESN'T WORK PROPERLY, UPDATE IT TO COVER CASES IN WHICH THE NUMBER OF THREADS IS LOWER THAN THE NUMBER OF ELEMENTS IN THE MATRIX
+  /// Kernel to check matrices equivalence.
+  __global__ void CompareMatrix_kernel(
+    float *dstMatrix,
+    float *srcMatrixA,
+    float *srcMatrixB,
+    int elements) {
+
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+    if(i < elements){
+      // TODO: TRY TO REMOVE THE CONDITIONAL STATEMENT
+      dstMatrix[i] = (srcMatrixA[i] == srcMatrixB[i])? 1:0;
+    }
+  }
+
+
+  /// Kernel to reduce matrix to one element
+  // Maximum matrix elements supported: 2^32
+  __global__ void ReduceMatrix_kernel(
+    float *matrix,
+    int   elements
+  )
+  {
+    for (int i=0; i < int(log2(elements)); i++){
+    //for (int i=0; i < 2; i++){
+      int ja = threadIdx.x * 2 + blockIdx.x * blockDim.x * 2;
+      if(ja < elements){
+        if(ja + i + pow(2,i) < elements){
+          matrix[ja] = matrix[ja] + matrix[ja + int(pow(2,i))];
+        }
+      }
+      // delete all threads that are not needed anymore
+      if((ja + int(pow(2,i + 1))) % int(pow(2,i + 2)) == 0){
+        return;
+      }
+      __syncthreads();
+    }
+  }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -353,27 +412,37 @@ private:
   /// Kernel parameters object
   typename GemmKernel::Params params_;
 
+public:
+
+  /// Constructs the GEMM.
+  Gemm() { }
+
   /// Allocates device memory for a matrix then fills with arbitrary small integers.
   cudaError_t AllocateMatrix(float **matrix, int rows, int columns) {
     cudaError_t result;
 
     size_t sizeof_matrix = sizeof(float) * rows * columns;
 
+    std::cout << "matrix before allocation: " << *matrix << "\n";
+    std::cout << "matrix size: " << sizeof_matrix << "\n";
+
     // Allocate device memory.
-    result = cudaMalloc(reinterpret_cast<void **>(dstMatrix), sizeof_matrix);
+    result = cudaMalloc(reinterpret_cast<void **>(matrix), sizeof_matrix);
+
+    std::cout << "newly allocated matrix: " << *matrix << "\n";
 
     /*if (result != cudaSuccess) {
       return result;
     }*/
 
     // Clear the allocation.
-    /*result = cudaMemset(*matrix, 0, sizeof_matrix);
+    result = cudaMemset(*matrix, 0, sizeof_matrix);
 
     if (result != cudaSuccess) {
       std::cerr << "Failed to clear matrix device memory: "
         << cudaGetErrorString(result) << std::endl;
       return result;
-    }*/
+    }
 
     // Initialize matrix elements to arbitrary small integers.
     /*result = InitializeMatrix(*matrix, rows, columns, seed);
@@ -387,26 +456,10 @@ private:
     return result;
   }
 
-  /// Kernel to copy a matrix into another.
-  __global__ void CopyMatrix_kernel(
-    float *dstMatrix,
-    float *srcMatrix,
-    int rows,
-    int columns) {
-
-    int i = threadIdx.x + blockIdx.x * blockDim.x;
-    int j = threadIdx.y + blockIdx.y * blockDim.y;
-
-    if (i < rows && j < columns) {
-      int offset = i + j * rows;
-
-      dstMatrix[offset] = srcMatrix[offset];
-    }
-  }
-
   /// Copy the content of a matrix into another
   cudaError_t CopyMatrix(float *dstMatrix,float* srcMatrix, int rows, int columns, cudaStream_t stream = nullptr) {
     cudaError_t result;
+    ThreadblockSwizzle threadblock_swizzle;
   
     // Allocate dst matrix
     //result = AllocateMatrix(dstMatrix,rows,columns);
@@ -414,67 +467,21 @@ private:
     /*if (result !=  cudaSuccess) {
       return result;
     }
+    */
     dim3 grid = threadblock_swizzle.get_grid_shape(params_.grid_tiled_shape);
     dim3 block(GemmKernel::kThreadCount, 1, 1);
-    */
 
     // Copy matrix
     /* TODO:  dynamically allocated shared memory (3rd kernel parameter) shouldn't be necessary
               since we already know the matrixes dimension.
               Statically alloc. smem should be enough if we want to use it.
     */
-    CopyMatrix_kernel<<grid, block, 0, stream>>(dstMatrix, srcMatrix, rows, columns);
+    CopyMatrix_kernel<<<grid,block,0,stream>>>(dstMatrix, srcMatrix, rows, columns);
     
     // Returns static errors during the kernel allocation since there is no synch that would allow to
     // wait for detection of errors during the kernel computation 
     return cudaGetLastError();
   }
-
-  /// Kernel to check matrices equivalence.
-  __global__ void CompareMatrix_kernel(
-    bool *dstMatrix,
-    float *srcMatrixA,
-    float *srcMatrixB,
-    int rows,
-    int columns) {
-
-    int i = threadIdx.x + blockIdx.x * blockDim.x;
-    if(i < rows){
-      int j = threadIdx.y + blockIdx.y * blockDim.y;
-      if(j < columns){
-        int offset = i + j*rows;
-        // TODO: TRY TO REMOVE THE CONDITIONAL STATEMENT
-        dstMatrix[offset] = (srcMatrixA[offset] == srcMatrixB[offset])? 1:0;
-      }
-    }
-  }
-
-
-  /// Kernel to reduce matrix to one element
-  // Maximum matrix elements supported: 2^32
-  __global__ int ReduceMatrix_kernel(
-    float *matrix,
-    int   elements
-  )
-  {
-    for (int i=0; i < int(log2(elements)); i++){
-      int ja = threadIdx.x * 2 + blockIdx.x * blockDim.x;
-      if(ja < elements){
-        if(ja + i + pow(2,i) < elements){
-          matrix[ja] = matrix[ja] + matrix[ja + i + pow(2,i)];
-        }
-      }
-      // delete all threads that are not needed anymore
-      if((ja + pow(2,i + 1)) % (pow(2,i + 2)) == 0){
-        return;
-      }
-    }
-  }
-
-public:
-
-  /// Constructs the GEMM.
-  Gemm() { }
 
   /// Determines whether the GEMM can execute the given problem.
   static Status can_implement(Arguments const &args) {
@@ -551,6 +558,8 @@ public:
         return Status::kErrorInvalidProblem;
       }
     }
+
+    std::cout << "ref_C: " << args.ref_C.data() << "\n";
 
     // Initialize the Params structure
     params_ = typename GemmKernel::Params{
@@ -647,6 +656,7 @@ public:
 
   /// Runs the kernel using initialized state.
   Status operator()(cudaStream_t stream = nullptr) {
+    return Status::kErrorInternal;
     return run(stream);
   }
 
@@ -655,30 +665,69 @@ public:
     Arguments const &args, 
     void *workspace = nullptr, 
     cudaStream_t stream = nullptr) {
+
+    /*
+
+    std::cout << "alpha: " << args.epilogue.alpha_ptr << ", beta: " << args.epilogue.beta_ptr << "\n";
+
+    Arguments const args1({args.problem_size.m(), args.problem_size.n(), args.problem_size.k()},  // Gemm Problem dimensions
+            {args.ref_A.const_ref().data(),args.problem_size.m()},    // Tensor-ref for source matrix A
+            {args.ref_B.const_ref().data(),args.problem_size.k()},    // Tensor-ref for source matrix B
+            {args.ref_C.data(),args.problem_size.m()},    // Tensor-ref for source matrix C
+            //{D[i], args.problem_size.m()},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+            {args.ref_D.data(),args.problem_size.m()},
+            //{args.ref_D.data(), args.ref_D.layout()},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+            {1,0});
+            //{args.epilogue.alpha_ptr, args.epilogue.beta_ptr}); // Scalars used in the Epilogue
+
+    Status status1 = initialize(args1, workspace, stream);
     
-    float* D[TMR]; // Additional matrices for TMR
-    int* tmp[TMR]; // temporary matrices for storing the results of comparisons between matrix 1-2, 2-3 and 1-3
+    if (status1 == Status::kSuccess) {
+      status1 = run(stream);
+    }
+
+    return status1;
+    */
+    
+    float* D[TMR]; // Additional matrices for TMR (DEV)
+    float* host_D[TMR]; // as before, but on the host (HOST)
+    float* tmp[TMR]; // temporary matrices for storing the results of comparisons between matrix 1-2, 2-3 and 1-3 (DEV)
+    float* host_tmp[TMR]; // as before, but they are kept on the host (to perform the comparisons between the sums and to handle odd sized matrices) (HOST)
     cudaStream_t streams[TMR] = {stream, nullptr, nullptr}; // Streams for additional matrices
+    cudaError_t result;
     Status status[TMR]; // GEMMs return value
     Arguments args_arr[TMR]; // Arguments
-    char res = 255; // the index of the matrix where the correct result is stored (the result should be copied)
+    char res = 10; // the index of the matrix where the correct result is stored (the result should be copied)
+
+    // mallocate the host matrices
+    for (int i = 0; i< TMR; i++)
+      host_tmp[i] = (float *)malloc(args.problem_size.m()*args.problem_size.n()*sizeof(float));
+
+    for (int i = 0; i< TMR; i++)
+      host_D[i] = (float *)malloc(args.problem_size.m()*args.problem_size.n()*sizeof(float));
 
     //AllocateMatrix(float **matrix, int rows, int columns)
+    std::cout << "D[0] address: " << &D[0] << "\n";
+    std::cout << "D[0] data: " << D[0] << "\n";
     // Allocate additional matrices 
-    result = AllocateMatrix(&D[0], args.problem_size.kM, args.problem_size.kN);
+    result = AllocateMatrix(&D[0], args.problem_size.m(), args.problem_size.n());
+
+    std::cout << "D[0] data: " << D[0] << "\n";
     
     if(result != cudaSuccess){
       return Status::kErrorInternal;
     }
 
-    result = AllocateMatrix(&D[1], args.problem_size.kM, args.problem_size.kN);
+    std::cout << "D[1] address: " << &D[1] << "\n";
+    result = AllocateMatrix(&D[1], args.problem_size.m(), args.problem_size.n());
     
     if(result != cudaSuccess){
       cudaFree(D[0]);
       return Status::kErrorInternal;
     }
     
-    result = AllocateMatrix(&D[2], args.problem_size.kM, args.problem_size.kN);
+    std::cout << "D[2] address: " << &D[2] << "\n";
+    result = AllocateMatrix(&D[2], args.problem_size.m(), args.problem_size.n());
     
     if(result != cudaSuccess){
       cudaFree(D[0]);
@@ -686,7 +735,7 @@ public:
       return Status::kErrorInternal;
     }
     
-    result = AllocateMatrix(&tmp[0], args.problem_size.kM, args.problem_size.kN);
+    result = AllocateMatrix(&tmp[0], args.problem_size.m(), args.problem_size.n());
     
     if(result != cudaSuccess){
       cudaFree(D[0]);
@@ -695,7 +744,7 @@ public:
       return Status::kErrorInternal;
     }
 
-    result = AllocateMatrix(&tmp[1], args.problem_size.kM, args.problem_size.kN);
+    result = AllocateMatrix(&tmp[1], args.problem_size.m(), args.problem_size.n());
     
     if(result != cudaSuccess){
       cudaFree(D[0]);
@@ -705,7 +754,7 @@ public:
       return Status::kErrorInternal;
     }
 
-    result = AllocateMatrix(&tmp[2], args.problem_size.kM, args.problem_size.kN);
+    result = AllocateMatrix(&tmp[2], args.problem_size.m(), args.problem_size.n());
     
     if(result != cudaSuccess){
       cudaFree(D[0]);
@@ -739,6 +788,12 @@ public:
 
     workspace = nullptr; // Forced to nullptr since we don't know what it does
 
+    std::cout << "ref_D: " << (D[0]) << "\n";
+    std::cout << "ref_D: " << (D[1]) << "\n";
+    std::cout << "ref_D: " << (D[2]) << "\n";
+    std::cout << "problem_size: " << args.problem_size.m() << "\n";
+    //std::cout << "layout: " << args.ref_D.stride() << "\n";
+
     /*  The operations inside the loop need to be done in that specific order for each destination matrix
         since, otherwise, the params_ structure would be overwritten by the 'initialize' method.
         This means that, for example, it is not possible to initialize the args for each matrix before
@@ -746,65 +801,153 @@ public:
     */ 
     CUTLASS_PRAGMA_UNROLL
     for(int i=0;i<TMR;i++){
-      args_arr[i] = (args.problem_size,  // Gemm Problem dimensions
+      /*
+      args_arr[i] = Arguments(args.problem_size,  // Gemm Problem dimensions
               args.ref_A,    // Tensor-ref for source matrix A
               args.ref_B,    // Tensor-ref for source matrix B
               args.ref_C,    // Tensor-ref for source matrix C
-              {D[i], args.ref_D.layout()},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
-              {*args.epilogue.alpha_ptr, *args.epilogue.beta_ptr}); // Scalars used in the Epilogue
+              //{D[i], args.ref_D.layout()},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+              args.ref_D,
+              //{args.ref_D.data(), args.ref_D.layout()},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+              //{0,0},
+              {args.epilogue.alpha_ptr, args.epilogue.beta_ptr}); // Scalars used in the Epilogue
+              //{0.0, 0.0});
+      */
+      args_arr[i] = Arguments({args.problem_size.m(), args.problem_size.n(), args.problem_size.k()},  // Gemm Problem dimensions
+              {args.ref_A.const_ref().data(),args.problem_size.m()},    // Tensor-ref for source matrix A
+              {args.ref_B.const_ref().data(),args.problem_size.k()},    // Tensor-ref for source matrix B
+              {args.ref_C.data(),args.problem_size.m()},    // Tensor-ref for source matrix C
+              {D[i], args.problem_size.m()},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+              //{args.ref_D.data(),args.problem_size.m()},
+              //{args.ref_D.data(), args.ref_D.layout()},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+              {1,0}); // TODO: FIND A WAY TO RETRIEVE ALPHA AND BETA, THE ptr BELOW DO NOT WORK
+              //{args.epilogue.alpha_ptr, args.epilogue.beta_ptr}); // Scalars used in the Epilogue
+              //{0.0, 0.0});
       status[i] = initialize(args_arr[i], workspace, streams[i]);
+      //status[i] = initialize(args, workspace, stream);
+      std::cout << "before run \n";
+      std::cout << "params.ref_D: " << params_.ref_D.data() << "\n";
       if (status[i] == Status::kSuccess) {
-        status[i] = run(stream[i]);
+        std:: cout << "running instance " << i << "\n";
+        //status[i] = run(streams[i]);
+        status[i] = run(stream);
       }
-      else break;
+      if (status[i] != Status::kSuccess) {
+        return Status::kErrorInternal;
+      }
     }
 
+    //cudaDeviceSynchronize();
+    //cudaMemcpy(args.ref_D.data(), D[0], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
+    //return status[0];
+    std:: cout << "reached sync point \n";
     cudaDeviceSynchronize();
+    std:: cout << "passed sync point \n";
+
+    // check results
+    cudaMemcpy(host_D[0], D[0], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(host_D[1], D[1], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(host_D[2], D[2], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
+
+    std:: cout << "D[0] address: " << host_D[0] << "\n";
+    for(int i; i< args.problem_size.m()*args.problem_size.n(); i++)
+      std:: cout << host_D[0][i] << " ";
+    std:: cout << "\n";
+
+    std:: cout << "D[1] address: " << host_D[1] << "\n";
+    for(int i; i< args.problem_size.m()*args.problem_size.n(); i++)
+      std:: cout << host_D[1][i] << " ";
+    std:: cout << "\n";
+
+    std:: cout << "D[2] address: " << host_D[2] << "\n";
+    for(int i; i< args.problem_size.m()*args.problem_size.n(); i++)
+      std:: cout << host_D[2][i] << " ";
+    std:: cout << "\n";
 
     // Operation results check
+    ThreadblockSwizzle threadblock_swizzle;
     
     // redefine grid and block size
     dim3 grid = threadblock_swizzle.get_grid_shape(params_.grid_tiled_shape);
     dim3 block(GemmKernel::kThreadCount, 1, 1);
-    dim3 block_reduce(args.problem_size.kM*args.problem_size.kN/2, 1, 1);
+    dim3 block_reduce(args.problem_size.m()*args.problem_size.n()/2, 1, 1);
+
+    std::cout << "block size: " << GemmKernel::kThreadCount << "\n";
+    std::cout << "grid size: " << grid << "\n";
+
+    std:: cout << "after dim3 definitions \n";
     
     // call comparison kernels on different streams to make sure they are executed in parallel
-    CompareMatrix_kernel<<grid, block, 0, streams[0]>>(tmp[0],D[0],D[1],args.problem_size.kM,args.problem_size.kN);
-    CompareMatrix_kernel<<grid, block, 0, streams[1]>>(tmp[1],D[1],D[2],args.problem_size.kM,args.problem_size.kN);
-    CompareMatrix_kernel<<grid, block, 0, streams[2]>>(tmp[2],D[0],D[2],args.problem_size.kM,args.problem_size.kN);
+    CompareMatrix_kernel<<<grid,block,0,streams[0]>>>(tmp[0],D[0],D[1],args.problem_size.m()*args.problem_size.n());
+    CompareMatrix_kernel<<<grid,block,0,streams[1]>>>(tmp[1],D[1],D[2],args.problem_size.m()*args.problem_size.n());
+    CompareMatrix_kernel<<<grid,block,0,streams[2]>>>(tmp[2],D[0],D[2],args.problem_size.m()*args.problem_size.n());
 
-    ReduceMatrix_kernel<<block, 0, streams[0]>>(tmp[0],args.problem_size.kM*args.problem_size.kN);
-    ReduceMatrix_kernel<<block, 0, streams[1]>>(tmp[1],args.problem_size.kM*args.problem_size.kN);
-    ReduceMatrix_kernel<<block, 0, streams[2]>>(tmp[2],args.problem_size.kM*args.problem_size.kN);
+    cudaDeviceSynchronize();
+
+    cudaMemcpy(host_tmp[0], tmp[0], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(host_tmp[1], tmp[1], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(host_tmp[2], tmp[2], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
+
+    cudaDeviceSynchronize();
+
+    std:: cout << "tmp address: " << host_tmp[0] << "\n";
+    for(int i; i< args.problem_size.m()*args.problem_size.n(); i++)
+      std:: cout << host_tmp[0][i] << " ";
+    std:: cout << "\n";
+
+    ReduceMatrix_kernel<<<grid,block_reduce,0,streams[0]>>>(tmp[0],args.problem_size.m()*args.problem_size.n());
+    ReduceMatrix_kernel<<<grid,block_reduce,0,streams[1]>>>(tmp[1],args.problem_size.m()*args.problem_size.n());
+    ReduceMatrix_kernel<<<grid,block_reduce,0,streams[2]>>>(tmp[2],args.problem_size.m()*args.problem_size.n());
+
+    std:: cout << "after compare and reduction\n";
 
     cudaDeviceSynchronize();
     
+    std:: cout << "after second sync \n";
+
+    // copy tmp matrices in host_tmp matrices
+    cudaMemcpy(host_tmp[0], tmp[0], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(host_tmp[1], tmp[1], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(host_tmp[2], tmp[2], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
+
+    cudaDeviceSynchronize();
+
+    std:: cout << "tmp address: " << host_tmp[0] << "\n";
+    for(int i; i< args.problem_size.m()*args.problem_size.n(); i++)
+      std:: cout << host_tmp[0][i] << " ";
+    std:: cout << "\n";
+
     // handle odd sized arrays: you have to add up the last element of the matrix/array to the first one (the one where the result is stored)
-    if(args.problem_size.kM*args.problem_size.kN % 2 == 1){
-      *tmp[0] = *tmp[0] + *(tmp[0] + args.problem_size.kM*args.problem_size.kN - 1);
-      *tmp[1] = *tmp[1] + *(tmp[1] + args.problem_size.kM*args.problem_size.kN - 1);
-      *tmp[2] = *tmp[2] + *(tmp[2] + args.problem_size.kM*args.problem_size.kN - 1);
+    if(args.problem_size.m()*args.problem_size.n() % 2 == 1){
+      std:: cout << "you shouldn't be here... \n";
+      *host_tmp[0] = *host_tmp[0] + *(host_tmp[0] + args.problem_size.m()*args.problem_size.n() - 1);
+      *host_tmp[1] = *host_tmp[1] + *(host_tmp[1] + args.problem_size.m()*args.problem_size.n() - 1);
+      *host_tmp[2] = *host_tmp[2] + *(host_tmp[2] + args.problem_size.m()*args.problem_size.n() - 1);
     }
 
+    std:: cout << "after odd size handling \n";
+
     // actual checks
-    if(tmp[0] == tmp[1]){
+    if(*host_tmp[0] == *host_tmp[1]){
       res = 0; // or 1, it's the same
-    }else if(tmp[1] == tmp[2]){
+    }else if(*host_tmp[1] == *host_tmp[2]){
       res = 1; // or 1, it's the same
-    }else if(tmp[0] == tmp[2]){
+    }else if(*host_tmp[0] == *host_tmp[2]){
       res = 0; // or 1, it's the same
     }
-    if(res == 255){
+    if(res == 10){
       return Status::kRedundancyError;
     }
 
+    std::cout << "res: " << res << "\n";
+
     // copy the result matrix in the real destination
     if(res == 0){
-      CopyMatrix(args.ref_D,D[0],args.problem_size.kM, args.problem_size.kN,stream);
+      cudaMemcpy(args.ref_D.data(), D[0], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
     }else if(res == 1){
-      CopyMatrix(args.ref_D,D[1],args.problem_size.kM, args.problem_size.kN,stream);
+      cudaMemcpy(args.ref_D.data(), D[1], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
     }else if(res == 2){
-      CopyMatrix(args.ref_D,D[2],args.problem_size.kM, args.problem_size.kN,stream);
+      cudaMemcpy(args.ref_D.data(), D[2], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
     }
 
     // Free resources
@@ -816,6 +959,10 @@ public:
     cudaFree(tmp[2]);
     cudaStreamDestroy(streams[1]);
     cudaStreamDestroy(streams[2]);
+
+    // mallocate the host_tmp matrices
+    for (int i = 0; i< TMR; i++)
+      free(host_tmp[i]);
 
     return Status::kSuccess;
   }

@@ -57,6 +57,7 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
+#include <signal.h>
 
 // Helper methods to check for errors
 #include "helper.h"
@@ -87,7 +88,9 @@ cudaError_t CutlassSgemmNN(
   int ldb,
   float beta,
   float *C,
-  int ldc) {
+  int ldc
+  //float *D
+  ) {
 
   // Define type definition for single-precision CUTLASS GEMM with column-major
   // input matrices and 128x128x8 threadblock tile size (chosen by default).
@@ -99,14 +102,15 @@ cudaError_t CutlassSgemmNN(
   // To view the full gemm device API interface, see `cutlass/gemm/device/gemm.h`
 
   using ColumnMajor = cutlass::layout::ColumnMajor;
+  using RowMajor = cutlass::layout::RowMajor;
 
   // parameters not set will be assigned to the default values
   using CutlassGemm = cutlass::gemm::device::Gemm<float,        // Data-type of A matrix
-                                                  ColumnMajor,  // Layout of A matrix
+                                                  RowMajor,  // Layout of A matrix
                                                   float,        // Data-type of B matrix
-                                                  ColumnMajor,  // Layout of B matrix
+                                                  RowMajor,  // Layout of B matrix
                                                   float,        // Data-type of C matrix
-                                                  ColumnMajor>; // Layout of C matrix
+                                                  RowMajor>; // Layout of C matrix
 
   // Define a CUTLASS GEMM type
   CutlassGemm gemm_operator;
@@ -130,6 +134,8 @@ cudaError_t CutlassSgemmNN(
   //
   // Launch the CUTLASS GEMM kernel.
   //
+  std::cout << "A address: " << A << "\n";
+  //std::cout << "A first element: " << A[0] << "\n";
   
   // TODO: PASS A FIRST STREAM AS A PARAMETER, SINCE INSIDE THE OPERATOR ONLY TWO STREAMS ARE CREATED (IS THIS NECESSARY OR WILL THE FIRST KERNEL BY EXECUTED ON THE STREAM 0 IF A STREAM IS NOT SPECIFIED?)
   cutlass::Status status = gemm_operator(args);
@@ -192,13 +198,20 @@ cudaError_t InitializeMatrix(float *matrix, int rows, int columns, int seed = 0)
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Allocates device memory for a matrix then fills with arbitrary small integers.
-cudaError_t AllocateMatrix(float **matrix, int rows, int columns, int seed = 0) {
+cudaError_t AllocateMatrix(float **matrix, int rows, int columns, int seed = 0, bool toBeInitialized = true) {
+//cudaError_t AllocateMatrix(float **matrix, int rows, int columns, int seed = 0) {
   cudaError_t result;
 
   size_t sizeof_matrix = sizeof(float) * rows * columns;
 
+  //cudaFree(0);
+
+  std::cout << "before allocation (CU): " << *matrix << "\n";
+
   // Allocate device memory.
   result = cudaMalloc(reinterpret_cast<void **>(matrix), sizeof_matrix);
+
+  std::cout << "after allocation (CU): " << *matrix << "\n";
 
   if (result != cudaSuccess) {
     std::cerr << "Failed to allocate matrix: "
@@ -215,13 +228,16 @@ cudaError_t AllocateMatrix(float **matrix, int rows, int columns, int seed = 0) 
     return result;
   }
 
-  // Initialize matrix elements to arbitrary small integers.
-  result = InitializeMatrix(*matrix, rows, columns, seed);
+  // initialize the matrix only when required
+  if(toBeInitialized == true){
+    // Initialize matrix elements to arbitrary small integers.
+    result = InitializeMatrix(*matrix, rows, columns, seed);
 
-  if (result != cudaSuccess) {
-    std::cerr << "Failed to initialize matrix: "
-      << cudaGetErrorString(result) << std::endl;
-    return result;
+    if (result != cudaSuccess) {
+      std::cerr << "Failed to initialize matrix: "
+        << cudaGetErrorString(result) << std::endl;
+      return result;
+    }
   }
 
   return result;
@@ -287,7 +303,11 @@ cudaError_t ReferenceGemm(
 /// Allocate several matrices in GPU device memory and call a single-precision
 /// CUTLASS GEMM kernel.
 cudaError_t TestCutlassGemm(int M, int N, int K, float alpha, float beta) {
+
   cudaError_t result;
+  std::vector<float> host_A(M * K, 0);
+  std::vector<float> host_B(K * N, 0);
+  std::vector<float> host_C(M * N, 0);
 
   //
   // Define several matrices to be used as operands to GEMM kernels.
@@ -299,6 +319,8 @@ cudaError_t TestCutlassGemm(int M, int N, int K, float alpha, float beta) {
   int ldc = M;
 
   // Compute size in bytes of the C matrix.
+  size_t sizeof_A = sizeof(float) * M * K;
+  size_t sizeof_B = sizeof(float) * K * N;
   size_t sizeof_C = sizeof(float) * ldc * N;
 
   // Define pointers to matrices in GPU device memory.
@@ -324,7 +346,32 @@ cudaError_t TestCutlassGemm(int M, int N, int K, float alpha, float beta) {
     return result;
   }
 
-  result = AllocateMatrix(&C_cutlass, M, N, 101);
+  result = cudaMemcpy(host_A.data(), A, sizeof_A, cudaMemcpyDeviceToHost);
+  //TODO: CHECK TO ASSESS IF OPERATION WAS ABLE TO COMPLETE CORRECTLY
+  result = cudaMemcpy(host_B.data(), B, sizeof_B, cudaMemcpyDeviceToHost);
+  //TODO: AS ABOVE
+
+  int cnt = 0;
+  std::cout << "A:\n";
+  for(float i: host_A){
+    cnt++;
+    std::cout << i << ' ';
+    if(cnt % M == 0)
+      std::cout << "\n";
+  }
+  std::cout << "\n";
+
+  cnt = 0;
+  std::cout << "B:\n";
+  for(float i: host_B){
+    cnt++;
+    std::cout << i << ' ';
+    if(cnt % K == 0)
+      std::cout << "\n";
+  }
+  std::cout << "\n";
+
+  result = AllocateMatrix(&C_cutlass, M, N, 101, false);
 
   if (result != cudaSuccess) {
     cudaFree(A);
@@ -332,7 +379,7 @@ cudaError_t TestCutlassGemm(int M, int N, int K, float alpha, float beta) {
     return result;
   }
 
-  result = AllocateMatrix(&C_reference, M, N, 101);
+  result = AllocateMatrix(&C_reference, M, N, 101, false);
 
   if (result != cudaSuccess) {
     cudaFree(A);
@@ -342,6 +389,17 @@ cudaError_t TestCutlassGemm(int M, int N, int K, float alpha, float beta) {
   }
 
   result = cudaMemcpy(C_reference, C_cutlass, sizeof_C, cudaMemcpyDeviceToDevice);
+  result = cudaMemcpy(host_C.data(), C_reference, sizeof_C, cudaMemcpyDeviceToHost);
+
+  std::cout << "C:\n";
+  cnt = 0;
+  for(float i: host_C){
+    cnt++;
+    std::cout << i << ' ';
+    if(cnt % M == 0)
+      std::cout << "\n";
+  }
+  std::cout << "\n";
 
   if (result != cudaSuccess) {
     std::cerr << "Failed to copy C_cutlass matrix to C_reference: "
@@ -433,6 +491,27 @@ cudaError_t TestCutlassGemm(int M, int N, int K, float alpha, float beta) {
   cudaFree(B);
   cudaFree(A);
 
+  // print the results
+  std::cout << "CUTLASS:\n";
+  cnt = 0;
+  for (float i: host_cutlass){
+    cnt++;
+    std::cout << i << ' ';
+    if(cnt % M == 0)
+      std::cout << "\n";
+  }
+  std::cout << "\n";
+
+  std::cout << "REFERENCE:\n";
+  cnt = 0;
+  for (float i: host_reference){
+    cnt++;
+    std::cout << i << ' ';
+    if(cnt % M == 0)
+      std::cout << "\n";
+  }
+  std::cout << "\n";
+
   //
   // Test for bit equivalence of results.
   //
@@ -448,6 +527,13 @@ cudaError_t TestCutlassGemm(int M, int N, int K, float alpha, float beta) {
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
+// sigint handler
+void sigintHandler(int param){
+  std::cout << "CTRL-C interrupted\n";
+  cudaDeviceReset();
+  exit(1);
+}
+
 /// Entry point to basic_gemm example.
 //
 // usage:
@@ -460,8 +546,11 @@ int main(int argc, const char *arg[]) {
   // Parse the command line to obtain GEMM dimensions and scalar values.
   //
 
+  // define a handler for sigint to clear cuda context before quitting
+  signal(SIGINT, sigintHandler);
   // GEMM problem dimensions.
-  int problem[3] = { 128, 128, 128 };
+  //int problem[3] = { 128, 128, 128 };
+  int problem[3] = { 4, 4, 4 };
 
   for (int i = 1; i < argc && i < 4; ++i) {
     std::stringstream ss(arg[i]);
