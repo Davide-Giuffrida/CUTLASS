@@ -266,10 +266,12 @@ __global__ void ReferenceGemm_kernel(
     float accumulator = 0;
 
     for (int k = 0; k < K; ++k) {
-      accumulator += A[i + k * lda] * B[k + j * ldb];
+      // accumulator += A[i + k * lda] * B[k + j * ldb];
+      accumulator += A[k + i * lda] * B[j + k * ldb];
     }
 
-    C[i + j * ldc] = alpha * accumulator + beta * C[i + j * ldc];
+    // C[i + j * ldc] = alpha * accumulator + beta * C[i + j * ldc];
+    C[j + i * ldc] = alpha * accumulator + beta * C[j + i * ldc];
   }
 }
 
@@ -314,13 +316,13 @@ cudaError_t TestCutlassGemm(int M, int N, int K, float alpha, float beta) {
   //
 
   // Compute leading dimensions for each matrix.
-  int lda = M;
+  int lda = N;
   int ldb = K;
   int ldc = M;
 
   // Compute size in bytes of the C matrix.
-  size_t sizeof_A = sizeof(float) * M * K;
-  size_t sizeof_B = sizeof(float) * K * N;
+  size_t sizeof_A = sizeof(float) * N * K;
+  size_t sizeof_B = sizeof(float) * K * M;
   size_t sizeof_C = sizeof(float) * ldc * N;
 
   // Define pointers to matrices in GPU device memory.
@@ -549,8 +551,8 @@ int main(int argc, const char *arg[]) {
   // define a handler for sigint to clear cuda context before quitting
   signal(SIGINT, sigintHandler);
   // GEMM problem dimensions.
-  //int problem[3] = { 128, 128, 128 };
-  int problem[3] = { 4, 4, 4 };
+  int problem[3] = { 16, 16, 16 };
+  //int problem[3] = { 4, 4, 4 };
 
   for (int i = 1; i < argc && i < 4; ++i) {
     std::stringstream ss(arg[i]);
