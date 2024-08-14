@@ -1,0 +1,8 @@
+# CMake generated Testfile for 
+# Source directory: /home/m.gpuprog/cutlass_project/CUTLASS/examples/28_ampere_3xtf32_fast_accurate_tensorop_fprop
+# Build directory: /home/m.gpuprog/cutlass_project/CUTLASS/build/examples/28_ampere_3xtf32_fast_accurate_tensorop_fprop
+# 
+# This file includes the relevant testing commands required for 
+# testing this directory and lists subdirectories to be tested as well.
+add_test([=[ctest_examples_28_ampere_3xtf32_fast_accurate_tensorop_fprop]=] "/home/m.gpuprog/cutlass_project/CUTLASS/build/examples/28_ampere_3xtf32_fast_accurate_tensorop_fprop/28_ampere_3xtf32_fast_accurate_tensorop_fprop")
+set_tests_properties([=[ctest_examples_28_ampere_3xtf32_fast_accurate_tensorop_fprop]=] PROPERTIES  DISABLED "OFF" WORKING_DIRECTORY "./bin" _BACKTRACE_TRIPLES "/home/m.gpuprog/cutlass_project/CUTLASS/build/examples/28_ampere_3xtf32_fast_accurate_tensorop_fprop/ctest/ctest_examples_28_ampere_3xtf32_fast_accurate_tensorop_fprop/CTestTestfile.ctest_examples_28_ampere_3xtf32_fast_accurate_tensorop_fprop.cmake;24;add_test;/home/m.gpuprog/cutlass_project/CUTLASS/build/examples/28_ampere_3xtf32_fast_accurate_tensorop_fprop/ctest/ctest_examples_28_ampere_3xtf32_fast_accurate_tensorop_fprop/CTestTestfile.ctest_examples_28_ampere_3xtf32_fast_accurate_tensorop_fprop.cmake;0;;/home/m.gpuprog/cutlass_project/CUTLASS/CMakeLists.txt;831;include;/home/m.gpuprog/cutlass_project/CUTLASS/examples/CMakeLists.txt;72;cutlass_add_executable_tests;/home/m.gpuprog/cutlass_project/CUTLASS/examples/28_ampere_3xtf32_fast_accurate_tensorop_fprop/CMakeLists.txt;32;cutlass_example_add_executable;/home/m.gpuprog/cutlass_project/CUTLASS/examples/28_ampere_3xtf32_fast_accurate_tensorop_fprop/CMakeLists.txt;0;")
