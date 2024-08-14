@@ -320,6 +320,9 @@ public:
     // declare additional accumulators to store the results of the three iterations
     FragmentC accum_array[3];
 
+    // declare helper variables
+    int tocopy;
+
     //
     // Mainloop
     //
@@ -345,6 +348,7 @@ public:
           // as the case may be.
 
           if (warp_mma_k == Base::kWarpGemmIterations - 1 && iter == 2) {
+          //if (warp_mma_k == Base::kWarpGemmIterations - 1) {
 
             // store in shared memory the fragments that will be used in the next iteration of the external loop
             // (they have been read from global memory and stored in tb_frag_X during the inner loop iterations)
@@ -373,6 +377,7 @@ public:
           ++this->warp_tile_iterator_B_;
 
           if (warp_mma_k == 0 && iter == 2) {
+          //if (warp_mma_k == 0) {
 
             // you need to load new fragments in shared mem (these will be used in the next outer loop iteration)
             // Load fragment from global A
@@ -391,13 +396,36 @@ public:
           }
 
           warp_mma(
+            // accum_array[iter],
             accum_array[iter],
             warp_frag_A[warp_mma_k % 2],
             warp_frag_B[warp_mma_k % 2],
+            // accum);
             accum_array[iter]);
         }
+
+        // resume the old values for the warp_tile_iterators
+        for (int warp_mma_k = 0; warp_mma_k < Base::kWarpGemmIterations; ++warp_mma_k) {
+          --this->warp_tile_iterator_A_;
+          --this->warp_tile_iterator_B_;
+        }
+        // an additional decrease to point to the original fragments
+        --this->warp_tile_iterator_A_;
+        --this->warp_tile_iterator_B_;
+        // reload fragments 0 (they are needed for the first iteration, since they are computed outside the outer loop at the beginning)
+        this->warp_tile_iterator_A_.load(warp_frag_A[0]);
+        this->warp_tile_iterator_B_.load(warp_frag_B[0]);
+        // re-increase the iterators, to make them point to the fragment 1 that will be fetched during the first iteration of the inner loop
+        ++this->warp_tile_iterator_A_;
+        ++this->warp_tile_iterator_B_;
+        
       }
 
+
+      for (int i = 0; i < int(accum.kStorageElements); ++i) {
+        accum.raw_data()[i] = accum_array[2].raw_data()[i];
+      }
+      
       // compare the three results to check if they are the same
       for (int i = 0; i < int(accum.kStorageElements); ++i) {
         if(accum_array[0].raw_data()[i] == accum_array[1].raw_data()[i]){
@@ -413,7 +441,7 @@ public:
           // find a way to propagate an error and return it as an output of the cuda call
         }
         // perform the actual copy operation
-        accum.raw_data()[i] = accum_array[tocopy].raw_data()[i];
+        // accum.raw_data()[i] = accum_array[tocopy].raw_data()[i];
       }
     }
 

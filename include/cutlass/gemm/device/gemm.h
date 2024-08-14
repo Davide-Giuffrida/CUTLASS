@@ -683,15 +683,16 @@ public:
             {1,0});
             //{args.epilogue.alpha_ptr, args.epilogue.beta_ptr}); // Scalars used in the Epilogue
 
-    Status status1 = initialize(args1, workspace, stream);
+    */
+    Status status = initialize(args, workspace, stream);
     
-    if (status1 == Status::kSuccess) {
-      status1 = run(stream);
+    if (status == Status::kSuccess) {
+      status = run(stream);
     }
 
-    return status1;
-    */
-    
+    return status;
+
+    /*
     float* D[TMR]; // Additional matrices for TMR (DEV)
     float* host_D[TMR]; // as before, but on the host (HOST)
     float* tmp[TMR]; // temporary matrices for storing the results of comparisons between matrix 1-2, 2-3 and 1-3 (DEV)
@@ -797,25 +798,23 @@ public:
     std::cout << "problem_size: " << args.problem_size.m() << "\n";
     //std::cout << "layout: " << args.ref_D.stride() << "\n";
 
-    /*  The operations inside the loop need to be done in that specific order for each destination matrix
-        since, otherwise, the params_ structure would be overwritten by the 'initialize' method.
-        This means that, for example, it is not possible to initialize the args for each matrix before
-        calling the 'run' method.
-    */ 
+    //  The operations inside the loop need to be done in that specific order for each destination matrix
+    //  since, otherwise, the params_ structure would be overwritten by the 'initialize' method.
+    //  This means that, for example, it is not possible to initialize the args for each matrix before
+    //  calling the 'run' method.
     CUTLASS_PRAGMA_UNROLL
     for(int i=0;i<TMR;i++){
-      /*
-      args_arr[i] = Arguments(args.problem_size,  // Gemm Problem dimensions
-              args.ref_A,    // Tensor-ref for source matrix A
-              args.ref_B,    // Tensor-ref for source matrix B
-              args.ref_C,    // Tensor-ref for source matrix C
-              //{D[i], args.ref_D.layout()},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
-              args.ref_D,
-              //{args.ref_D.data(), args.ref_D.layout()},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
-              //{0,0},
-              {args.epilogue.alpha_ptr, args.epilogue.beta_ptr}); // Scalars used in the Epilogue
-              //{0.0, 0.0});
-      */
+      
+      // args_arr[i] = Arguments(args.problem_size,  // Gemm Problem dimensions
+      //         args.ref_A,    // Tensor-ref for source matrix A
+      //         args.ref_B,    // Tensor-ref for source matrix B
+      //         args.ref_C,    // Tensor-ref for source matrix C
+      //         //{D[i], args.ref_D.layout()},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+      //         args.ref_D,
+      //         //{args.ref_D.data(), args.ref_D.layout()},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+      //         //{0,0},
+      //         {args.epilogue.alpha_ptr, args.epilogue.beta_ptr}); // Scalars used in the Epilogue
+      //         //{0.0, 0.0});
       args_arr[i] = Arguments({args.problem_size.m(), args.problem_size.n(), args.problem_size.k()},  // Gemm Problem dimensions
               {args.ref_A.const_ref().data(),args.problem_size.m()},    // Tensor-ref for source matrix A
               {args.ref_B.const_ref().data(),args.problem_size.k()},    // Tensor-ref for source matrix B
@@ -853,17 +852,17 @@ public:
     cudaMemcpy(host_D[2], D[2], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
 
     std:: cout << "D[0] address: " << host_D[0] << "\n";
-    for(int i; i< args.problem_size.m()*args.problem_size.n(); i++)
+    for(int i = 0; i< args.problem_size.m()*args.problem_size.n(); i++)
       std:: cout << host_D[0][i] << " ";
     std:: cout << "\n";
 
     std:: cout << "D[1] address: " << host_D[1] << "\n";
-    for(int i; i< args.problem_size.m()*args.problem_size.n(); i++)
+    for(int i = 0; i< args.problem_size.m()*args.problem_size.n(); i++)
       std:: cout << host_D[1][i] << " ";
     std:: cout << "\n";
 
     std:: cout << "D[2] address: " << host_D[2] << "\n";
-    for(int i; i< args.problem_size.m()*args.problem_size.n(); i++)
+    for(int i = 0; i< args.problem_size.m()*args.problem_size.n(); i++)
       std:: cout << host_D[2][i] << " ";
     std:: cout << "\n";
 
@@ -894,7 +893,7 @@ public:
     cudaDeviceSynchronize();
 
     std:: cout << "tmp address: " << host_tmp[0] << "\n";
-    for(int i; i< args.problem_size.m()*args.problem_size.n(); i++)
+    for(int i = 0; i< args.problem_size.m()*args.problem_size.n(); i++)
       std:: cout << host_tmp[0][i] << " ";
     std:: cout << "\n";
 
@@ -916,7 +915,7 @@ public:
     cudaDeviceSynchronize();
 
     std:: cout << "tmp address: " << host_tmp[0] << "\n";
-    for(int i; i< args.problem_size.m()*args.problem_size.n(); i++)
+    for(int i = 0; i< args.problem_size.m()*args.problem_size.n(); i++)
       std:: cout << host_tmp[0][i] << " ";
     std:: cout << "\n";
 
@@ -968,6 +967,7 @@ public:
       free(host_tmp[i]);
 
     return Status::kSuccess;
+    */
   }
 };
 
