@@ -418,13 +418,13 @@ public:
         // re-increase the iterators, to make them point to the fragment 1 that will be fetched during the first iteration of the inner loop
         ++this->warp_tile_iterator_A_;
         ++this->warp_tile_iterator_B_;
-        
+
       }
 
 
-      for (int i = 0; i < int(accum.kStorageElements); ++i) {
-        accum.raw_data()[i] = accum_array[2].raw_data()[i];
-      }
+      // for (int i = 0; i < int(accum.kStorageElements); ++i) {
+      //   accum.raw_data()[i] = accum_array[2].raw_data()[i];
+      // }
       
       // compare the three results to check if they are the same
       for (int i = 0; i < int(accum.kStorageElements); ++i) {
@@ -441,7 +441,7 @@ public:
           // find a way to propagate an error and return it as an output of the cuda call
         }
         // perform the actual copy operation
-        // accum.raw_data()[i] = accum_array[tocopy].raw_data()[i];
+        accum.raw_data()[i] = accum_array[tocopy].raw_data()[i];
       }
     }
 
