@@ -1,0 +1,66 @@
+Using report1.sqlite for SQL queries.
+Running [/usr/local/cuda-11.6/nsight-systems-2021.5.2/target-linux-x64/reports/nvtxsum.py report1.sqlite]... SKIPPED: report1.sqlite does not contain NV Tools Extension (NVTX) data.
+
+Running [/usr/local/cuda-11.6/nsight-systems-2021.5.2/target-linux-x64/reports/osrtsum.py report1.sqlite]... SKIPPED: report1.sqlite does not contain OS Runtime trace data.
+
+Running [/usr/local/cuda-11.6/nsight-systems-2021.5.2/target-linux-x64/reports/cudaapisum.py report1.sqlite]... 
+
+ Time (%)  Total Time (ns)  Num Calls    Avg (ns)    Med (ns)  Min (ns)   Max (ns)    StdDev (ns)         Name      
+ --------  ---------------  ---------  ------------  --------  --------  -----------  ------------  ----------------
+     99,0      108.090.860          4  27.022.715,0   3.033,0     1.636  108.083.157  54.040.294,0  cudaMalloc      
+      0,0          102.348          6      17.058,0   8.198,0     6.448       57.227      19.887,0  cudaMemcpy      
+      0,0           59.384          4      14.846,0   2.605,0     1.343       52.830      25.350,0  cudaFree        
+      0,0           28.151          4       7.037,0   5.694,0     3.590       13.172       4.400,0  cudaLaunchKernel
+      0,0           14.933          4       3.733,0   2.384,0     1.666        8.498       3.194,0  cudaMemset      
+
+Running [/usr/local/cuda-11.6/nsight-systems-2021.5.2/target-linux-x64/reports/gpukernsum.py report1.sqlite]... 
+
+ Time (%)  Total Time (ns)  Instances  Avg (ns)  Med (ns)  Min (ns)  Max (ns)  StdDev (ns)                                                  Name                                                
+ --------  ---------------  ---------  --------  --------  --------  --------  -----------  ----------------------------------------------------------------------------------------------------
+     88,0           48.928          1  48.928,0  48.928,0    48.928    48.928          0,0  void cutlass::Kernel<cutlass::gemm::kernel::Gemm<cutlass::gemm::threadblock::MmaPipelined<cutlass::…
+      7,0            3.872          2   1.936,0   1.936,0     1.920     1.952         22,0  InitializeMatrix_kernel(float *, int, int, int)                                                     
+      5,0            2.752          1   2.752,0   2.752,0     2.752     2.752          0,0  ReferenceGemm_kernel(int, int, int, float, const float *, int, const float *, int, float, float *, …
+
+Running [/usr/local/cuda-11.6/nsight-systems-2021.5.2/target-linux-x64/reports/gpumemtimesum.py report1.sqlite]... 
+
+ Time (%)  Total Time (ns)  Count  Avg (ns)  Med (ns)  Min (ns)  Max (ns)  StdDev (ns)      Operation     
+ --------  ---------------  -----  --------  --------  --------  --------  -----------  ------------------
+     50,0            4.864      5     972,0     864,0       832     1.152        164,0  [CUDA memcpy DtoH]
+     31,0            3.008      4     752,0     720,0       704       864         76,0  [CUDA memset]     
+     18,0            1.728      1   1.728,0   1.728,0     1.728     1.728          0,0  [CUDA memcpy DtoD]
+
+Running [/usr/local/cuda-11.6/nsight-systems-2021.5.2/target-linux-x64/reports/gpumemsizesum.py report1.sqlite]... 
+
+ Total (MB)  Count  Avg (MB)  Med (MB)  Min (MB)  Max (MB)  StdDev (MB)      Operation     
+ ----------  -----  --------  --------  --------  --------  -----------  ------------------
+ 0,005           5  0,001     0,001     0,001     0,001     0,000        [CUDA memcpy DtoH]
+ 0,004           4  0,001     0,001     0,001     0,001     0,000        [CUDA memset]     
+ 0,001           1  0,001     0,001     0,001     0,001     0,000        [CUDA memcpy DtoD]
+
+Running [/usr/local/cuda-11.6/nsight-systems-2021.5.2/target-linux-x64/reports/openmpevtsum.py report1.sqlite]... SKIPPED: report1.sqlite does not contain OpenMP event data.
+
+Running [/usr/local/cuda-11.6/nsight-systems-2021.5.2/target-linux-x64/reports/khrdebugsum.py report1.sqlite]... SKIPPED: report1.sqlite does not contain KHR Extension (KHR_DEBUG) data.
+
+Running [/usr/local/cuda-11.6/nsight-systems-2021.5.2/target-linux-x64/reports/khrdebuggpusum.py report1.sqlite]... SKIPPED: report1.sqlite does not contain GPU KHR Extension (KHR_DEBUG) data.
+
+Running [/usr/local/cuda-11.6/nsight-systems-2021.5.2/target-linux-x64/reports/vulkanmarkerssum.py report1.sqlite]... SKIPPED: report1.sqlite does not contain Vulkan Debug Extension (Vulkan Debug Util) data.
+
+Running [/usr/local/cuda-11.6/nsight-systems-2021.5.2/target-linux-x64/reports/vulkangpumarkersum.py report1.sqlite]... SKIPPED: report1.sqlite does not contain GPU Vulkan Debug Extension (GPU Vulkan Debug markers) data.
+
+Running [/usr/local/cuda-11.6/nsight-systems-2021.5.2/target-linux-x64/reports/dx12gpumarkersum.py report1.sqlite]... SKIPPED: report1.sqlite does not contain DX12 GPU debug markers.
+
+Running [/usr/local/cuda-11.6/nsight-systems-2021.5.2/target-linux-x64/reports/pixsum.py report1.sqlite]... SKIPPED: report1.sqlite does not contain DX11/DX12 CPU debug markers.
+
+Running [/usr/local/cuda-11.6/nsight-systems-2021.5.2/target-linux-x64/reports/wddmqueuesdetails.py report1.sqlite]... 
+
+ friendlyName  pid  gpu  context  engineType  nodeOrdinal  queueType  utilization
+ ------------  ---  ---  -------  ----------  -----------  ---------  -----------
+
+Running [/usr/local/cuda-11.6/nsight-systems-2021.5.2/target-linux-x64/reports/unifiedmemory.py report1.sqlite]... SKIPPED: report1.sqlite does not contain CUDA Unified Memory CPU page faults data.
+
+Running [/usr/local/cuda-11.6/nsight-systems-2021.5.2/target-linux-x64/reports/unifiedmemorytotals.py report1.sqlite]... SKIPPED: report1.sqlite does not contain CUDA Unified Memory CPU page faults data.
+
+Running [/usr/local/cuda-11.6/nsight-systems-2021.5.2/target-linux-x64/reports/umcpupagefaults.py report1.sqlite]... SKIPPED: report1.sqlite does not contain CUDA Unified Memory CPU page faults data.
+
+Running [/usr/local/cuda-11.6/nsight-systems-2021.5.2/target-linux-x64/reports/openaccsum.py report1.sqlite]... SKIPPED: report1.sqlite does not contain OpenACC event data.
+
