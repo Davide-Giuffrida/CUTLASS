@@ -127,9 +127,11 @@ struct Gemm {
       gather_B_indices(gather_B_indices),
       scatter_D_indices(scatter_D_indices) {
 
-      int total_gemm_k_iterations = (problem_size.k() + Mma::Shape::kK - 1) / Mma::Shape::kK;
+      // the number of iterations over K dimension for the block level MMA
+      int total_gemm_k_iterations = (problem_size.k() + Mma::Shape::kK - 1) / Mma::Shape::kK; //Mma::Shape::kK = K size of the block on A,B matrices
+      // grid_tiled_shape.k() is 1 by default (the grid_shape is defined in gemm.h/device based on the function in threadblock_swizzle.h)
       int gemm_k_iterations = (total_gemm_k_iterations + grid_tiled_shape.k() - 1) / grid_tiled_shape.k();
-      
+      // gemm_k_iterations = total_gemm_k_iterations ---> gemm_k_size = K
       gemm_k_size = gemm_k_iterations * Mma::Shape::kK;
 
     semaphore = workspace;
@@ -206,6 +208,7 @@ struct Gemm {
     // Compute threadblock location
     ThreadblockSwizzle threadblock_swizzle;
 
+    // based on the block ids (computed in threadblock_swizzle.h)
     cutlass::gemm::GemmCoord threadblock_tile_offset =
         threadblock_swizzle.get_tile_offset(params.swizzle_log_tile);
 
@@ -218,21 +221,24 @@ struct Gemm {
 
     // Compute initial location in logical coordinates
     cutlass::MatrixCoord tb_offset_A{
-      threadblock_tile_offset.m() * Mma::Shape::kM,
-      threadblock_tile_offset.k() * params.gemm_k_size,
+      threadblock_tile_offset.m() * Mma::Shape::kM, // kM is the vertical size of a block in the A matrix
+      threadblock_tile_offset.k() * params.gemm_k_size, // threadblock_tile_offset.k() = 0
+      // log_tile is defined depending on the grid_shape in gemm.h/device, where the dim.z is set to 1.
+      // get_tile_offset returns a k coordinate the blockIdx.z, which is always 0 (since dim.z is defined as 1 in the dim3)
     };
 
     cutlass::MatrixCoord tb_offset_B{
-      threadblock_tile_offset.k() * params.gemm_k_size,
-      threadblock_tile_offset.n() * Mma::Shape::kN
+      threadblock_tile_offset.k() * params.gemm_k_size, // 0
+      threadblock_tile_offset.n() * Mma::Shape::kN // the horizontal size of the B matrix block
     };
 
     // Problem size is a function of threadblock index in the K dimension
     int problem_size_k = min(
-      params.problem_size.k(), 
+      params.problem_size.k(), // K
       (threadblock_tile_offset.k() + 1) * params.gemm_k_size);
+    // idk what they wanted to do here, the value is always K since the grid_tiled_shape.k() is always 1 (see above)
 
-    // Compute threadblock-scoped matrix multiply-add
+    // Compute threadblock-scoped matrix multiply-add, this is the number of iterations made while scanning A and B horizontal and vertical stripes
     int gemm_k_iterations = (problem_size_k - tb_offset_A.column() + Mma::Shape::kK - 1) / Mma::Shape::kK;
 
     // Compute position within threadblock
@@ -267,6 +273,7 @@ struct Gemm {
     // Construct thread-scoped matrix multiply
     Mma mma(shared_storage.main_loop, thread_idx, warp_idx, lane_idx);
 
+    // this is an array of accumulators (the ones that are used by each thread)
     typename Mma::FragmentC accumulators;
 
     accumulators.clear();
@@ -350,6 +357,7 @@ struct Gemm {
 
     }
 
+    // The epilogue is in epilogue.h/threadblock
     // Execute the epilogue operator to update the destination tensor.
     epilogue(output_op, iterator_D, accumulators, iterator_C); 
     

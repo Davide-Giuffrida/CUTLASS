@@ -525,6 +525,7 @@ public:
     // Determine grid shape
     ThreadblockSwizzle threadblock_swizzle;
 
+    // grid_shape corresponds to the number of blocks horizontally and vertically and 1 on the z coordinate
     cutlass::gemm::GemmCoord grid_shape = threadblock_swizzle.get_tiled_shape(
       args.problem_size, 
       {ThreadblockShape::kM, ThreadblockShape::kN, ThreadblockShape::kK},
@@ -651,6 +652,8 @@ public:
   }
 
   /// Runs the kernel using initialized state.
+  // TODO: CHECK IF WE CAN COPY THE ARGS OBJECT IN TWO OTHER OBJECTS OF THE SAME TYPE, SO THAT WE DON'T NEED
+  // TO DO THE DEREFERENCE OF THE SINGLE FIELDS (we are currently unable to retrieve alpha and beta values that are passed from the cu file).
   Status operator()(
     Arguments const &args, 
     void *workspace = nullptr, 

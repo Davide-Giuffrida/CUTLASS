@@ -263,6 +263,7 @@ public:
     ++iterator_B;
 
     // Store A and B fragments to shared
+    // the store makes it necessary to update the smem iterators (which is done below)
     this->smem_iterator_A_.store(transform_A_(tb_frag_A));
     this->smem_iterator_B_.store(transform_B_(tb_frag_B));
 
@@ -294,6 +295,8 @@ public:
     WarpFragmentA warp_frag_A[2];
     WarpFragmentB warp_frag_B[2];
 
+    // these are the fragments that are needed for the computation related to the first slice (first iteration of the inner loop)
+    // these fragments are stored in warp RF
     // Load A fragment from shared A
     this->warp_tile_iterator_A_.set_kgroup_index(0);
     this->warp_tile_iterator_A_.load(warp_frag_A[0]);
@@ -305,12 +308,17 @@ public:
     ++this->warp_tile_iterator_B_;
 
     // Pair of fragments used to overlap global memory loads and math instructions;
+    // array_subbyte.h in include/cutlass for Array Type definition. The Array type is used to build the fragment, since
+    // the Fragment type itself is defined as: using Fragment = Array< Element, Policy::MmaIterations::kCount * InstructionShape::kMN / kThreads>;
     FragmentA tb_frag_A;
     FragmentB tb_frag_B;
 
     // Avoid reading out of bounds
     iterator_A.clear_mask(gemm_k_iterations <= 1);
     iterator_B.clear_mask(gemm_k_iterations <= 1);
+
+    // declare additional accumulators to store the results of the three iterations
+    FragmentC accum_array[3];
 
     //
     // Mainloop
@@ -323,57 +331,89 @@ public:
       // Loop over GEMM K dimension
       //
 
-      CUTLASS_PRAGMA_UNROLL
-      for (int warp_mma_k = 0; warp_mma_k < Base::kWarpGemmIterations; ++warp_mma_k) {
+      // clear the accumulators before starting the three iterations
+      accum_array[0].clear();
+      accum_array[1].clear();
+      accum_array[2].clear();
 
-        // Load warp-level tiles from shared memory, wrapping to k offset if this is the last group
-        // as the case may be.
+      for (int iter = 0; iter < 3; iter++){
 
-        if (warp_mma_k == Base::kWarpGemmIterations - 1) {
+        CUTLASS_PRAGMA_UNROLL
+        for (int warp_mma_k = 0; warp_mma_k < Base::kWarpGemmIterations; ++warp_mma_k) {
 
-          // Write fragments to shared memory
-          this->smem_iterator_A_.store(transform_A_(tb_frag_A));
+          // Load warp-level tiles from shared memory, wrapping to k offset if this is the last group
+          // as the case may be.
 
-          this->smem_iterator_B_.store(transform_B_(tb_frag_B));
+          if (warp_mma_k == Base::kWarpGemmIterations - 1 && iter == 2) {
 
-          // Wait until we have at least one completed global fetch stage
-          gmem_wait();
+            // store in shared memory the fragments that will be used in the next iteration of the external loop
+            // (they have been read from global memory and stored in tb_frag_X during the inner loop iterations)
+            // Write fragments to shared memory
+            this->smem_iterator_A_.store(transform_A_(tb_frag_A));
 
-          // Advance smem read and write stages
-          advance_smem_stages();
+            this->smem_iterator_B_.store(transform_B_(tb_frag_B));
+
+            // Wait until we have at least one completed global fetch stage
+            gmem_wait();
+
+            // Advance smem read and write stages
+            advance_smem_stages();
+          }
+
+          this->warp_tile_iterator_A_.set_kgroup_index((warp_mma_k + 1) % Base::kWarpGemmIterations);
+          this->warp_tile_iterator_B_.set_kgroup_index((warp_mma_k + 1) % Base::kWarpGemmIterations);
+
+          // load the second fragments while you perform computation on the first ones (no need for __syncthreads()
+          // since the two operations overlap, but how can you be sure that one of them doesn't take more time?)
+
+          this->warp_tile_iterator_A_.load(warp_frag_A[(warp_mma_k + 1) % 2]);
+          this->warp_tile_iterator_B_.load(warp_frag_B[(warp_mma_k + 1) % 2]);
+
+          ++this->warp_tile_iterator_A_;
+          ++this->warp_tile_iterator_B_;
+
+          if (warp_mma_k == 0 && iter == 2) {
+
+            // you need to load new fragments in shared mem (these will be used in the next outer loop iteration)
+            // Load fragment from global A
+            tb_frag_A.clear();
+            iterator_A.load(tb_frag_A);
+            ++iterator_A;
+
+            // Load fragment from global B
+            tb_frag_B.clear();
+            iterator_B.load(tb_frag_B);
+            ++iterator_B;
+
+            // Avoid reading out of bounds if this was the last loop iteration
+            iterator_A.clear_mask(gemm_k_iterations <= 2);
+            iterator_B.clear_mask(gemm_k_iterations <= 2);
+          }
+
+          warp_mma(
+            accum_array[iter],
+            warp_frag_A[warp_mma_k % 2],
+            warp_frag_B[warp_mma_k % 2],
+            accum_array[iter]);
         }
+      }
 
-        this->warp_tile_iterator_A_.set_kgroup_index((warp_mma_k + 1) % Base::kWarpGemmIterations);
-        this->warp_tile_iterator_B_.set_kgroup_index((warp_mma_k + 1) % Base::kWarpGemmIterations);
-
-        this->warp_tile_iterator_A_.load(warp_frag_A[(warp_mma_k + 1) % 2]);
-        this->warp_tile_iterator_B_.load(warp_frag_B[(warp_mma_k + 1) % 2]);
-
-        ++this->warp_tile_iterator_A_;
-        ++this->warp_tile_iterator_B_;
-
-        if (warp_mma_k == 0) {
-
-          // Load fragment from global A
-          tb_frag_A.clear();
-          iterator_A.load(tb_frag_A);
-          ++iterator_A;
-
-          // Load fragment from global B
-          tb_frag_B.clear();
-          iterator_B.load(tb_frag_B);
-          ++iterator_B;
-
-          // Avoid reading out of bounds if this was the last loop iteration
-          iterator_A.clear_mask(gemm_k_iterations <= 2);
-          iterator_B.clear_mask(gemm_k_iterations <= 2);
+      // compare the three results to check if they are the same
+      for (int i = 0; i < int(accum.kStorageElements); ++i) {
+        if(accum_array[0].raw_data()[i] == accum_array[1].raw_data()[i]){
+          // if they are the same then you can assign their value to the actual accum, which will be returned by the function
+          // you have to copy the array values one by one, because the accum_array is declared inside this method (it could be deallocated when you leave)
+          tocopy = 0;
+        } else if (accum_array[0].raw_data()[i] == accum_array[2].raw_data()[i]){
+          // the same as before, copy the first array into the destination accumulator
+          tocopy = 0;
+        } else if (accum_array[1].raw_data()[i] == accum_array[2].raw_data()[i]){
+          tocopy = 1;
+        } else {
+          // find a way to propagate an error and return it as an output of the cuda call
         }
-
-        warp_mma(
-          accum,
-          warp_frag_A[warp_mma_k % 2],
-          warp_frag_B[warp_mma_k % 2],
-          accum);
+        // perform the actual copy operation
+        accum.raw_data()[i] = accum_array[tocopy].raw_data()[i];
       }
     }
 
