@@ -89,6 +89,7 @@ struct Gemm {
     int const *gather_A_indices;
     int const *gather_B_indices;
     int const *scatter_D_indices;
+    int iteration_number;
 
     //
     // Methods
@@ -109,7 +110,8 @@ struct Gemm {
       int *workspace = nullptr,
       int const *gather_A_indices = nullptr,
       int const *gather_B_indices = nullptr,
-      int const *scatter_D_indices = nullptr
+      int const *scatter_D_indices = nullptr,
+      int iter = 0
     ):
       problem_size(problem_size),
       grid_tiled_shape(grid_tiled_shape),
@@ -125,7 +127,8 @@ struct Gemm {
       output_op(output_op),
       gather_A_indices(gather_A_indices),
       gather_B_indices(gather_B_indices),
-      scatter_D_indices(scatter_D_indices) {
+      scatter_D_indices(scatter_D_indices),
+      iteration_number(iter) {
 
       // the number of iterations over K dimension for the block level MMA
       int total_gemm_k_iterations = (problem_size.k() + Mma::Shape::kK - 1) / Mma::Shape::kK; //Mma::Shape::kK = K size of the block on A,B matrices
@@ -282,7 +285,7 @@ struct Gemm {
     if (!kSplitKSerial || gemm_k_iterations > 0) {
       // Compute threadblock-scoped matrix multiply-add
       // the iterations over all the blocks are done through the iterators (they move through the two matrices)
-      mma(gemm_k_iterations, accumulators, iterator_A, iterator_B, accumulators);
+      mma(gemm_k_iterations, accumulators, iterator_A, iterator_B, accumulators, params.iteration_number);
     }
 
     //

@@ -527,7 +527,7 @@ public:
   }
 
   /// Initializes GEMM state from arguments.
-  Status initialize(Arguments const &args, void *workspace = nullptr, cudaStream_t stream = nullptr) {
+  Status initialize(Arguments const &args, int iter, void *workspace = nullptr, cudaStream_t stream = nullptr) {
 
     // Determine grid shape
     ThreadblockSwizzle threadblock_swizzle;
@@ -574,7 +574,8 @@ public:
       static_cast<int *>(workspace),
       args.gather_A_indices,
       args.gather_B_indices,
-      args.scatter_D_indices
+      args.scatter_D_indices,
+      iter
     };
 
     return Status::kSuccess;
@@ -673,22 +674,75 @@ public:
 
     std::cout << "alpha: " << args.epilogue.alpha_ptr << ", beta: " << args.epilogue.beta_ptr << "\n";
 
-    Arguments const args1({args.problem_size.m(), args.problem_size.n(), args.problem_size.k()},  // Gemm Problem dimensions
-            {args.ref_A.const_ref().data(),args.problem_size.m()},    // Tensor-ref for source matrix A
-            {args.ref_B.const_ref().data(),args.problem_size.k()},    // Tensor-ref for source matrix B
-            {args.ref_C.data(),args.problem_size.m()},    // Tensor-ref for source matrix C
-            //{D[i], args.problem_size.m()},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
-            {args.ref_D.data(),args.problem_size.m()},
-            //{args.ref_D.data(), args.ref_D.layout()},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
-            {1,0});
-            //{args.epilogue.alpha_ptr, args.epilogue.beta_ptr}); // Scalars used in the Epilogue
-
     */
-    Status status = initialize(args, workspace, stream);
-    
-    if (status == Status::kSuccess) {
-      status = run(stream);
+    float *host_D, *host_C;
+    float *device_C;
+    Status status;
+    Arguments args_int;
+    int cnt;
+    cudaError_t result;
+
+    // copy args in args_int
+    args_int = args;
+
+    // allocate a copy of D on the host
+    host_D = (float *)malloc(args.problem_size.m()*args.problem_size.n()*sizeof(float));
+    host_C = (float *)malloc(args.problem_size.m()*args.problem_size.n()*sizeof(float));
+
+    // allocate an additional D on the device
+    result = AllocateMatrix(&device_C, args.problem_size.m(), args.problem_size.n());
+
+    if(result != cudaSuccess){
+      return Status::kErrorInternal;
     }
+
+    // the 16 is probably the K dimension of the warp shape
+    int total_gemm_k_iterations = (args.problem_size.k() + 16 - 1) / 16; //Mma::Shape::kK = 8 size of the block on A,B matrices
+
+    std::cout << "gemm iterations: " << total_gemm_k_iterations << "\n";
+    for (int iter = 0; iter < total_gemm_k_iterations; iter++){
+      status = initialize(args_int, iter, workspace, stream);
+
+      cudaMemcpy(host_C, args_int.ref_C.data(), args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
+      std::cout << "C address: " << args_int.ref_C.data() << "\n";
+      std::cout << "D address: " << args_int.ref_D.data() << "\n";
+
+      // std::cout << "C STEP " << iter << ":\n";
+      // for (cnt = 0; cnt < args.problem_size.m() * args.problem_size.n(); cnt++){
+      //   std::cout << host_C[cnt] << ' ';
+      //   if(cnt % args.problem_size.m() == args.problem_size.m() - 1)
+      //     std::cout << "\n";
+      // }
+      // std::cout << "\n";
+
+      if (status == Status::kSuccess) {
+        status = run(stream);
+      }
+      cudaDeviceSynchronize();
+      // copy the result to the host 
+      cudaMemcpy(host_D, args.ref_D.data(), args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
+      
+      // std::cout << "REFERENCE STEP " << iter << ":\n";
+      // for (cnt = 0; cnt < args.problem_size.m() * args.problem_size.n(); cnt++){
+      //   std::cout << host_D[cnt] << ' ';
+      //   if(cnt % args.problem_size.m() == args.problem_size.m() - 1)
+      //     std::cout << "\n";
+      // }
+      // std::cout << "\n";
+      cudaMemcpy(device_C, host_D, args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyHostToDevice);
+      // separate C and D pointers since we are doing multiple iterations
+      args_int = Arguments({args.problem_size.m(), args.problem_size.n(), args.problem_size.k()},  // Gemm Problem dimensions
+                {args.ref_A.const_ref().data(),args.problem_size.m()},    // Tensor-ref for source matrix A
+                {args.ref_B.const_ref().data(),args.problem_size.k()},    // Tensor-ref for source matrix B
+                {device_C,args.problem_size.m()},    // Tensor-ref for source matrix C
+                {args.ref_D.data(), args.problem_size.m()},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                //{args.ref_D.data(),args.problem_size.m()},
+                //{args.ref_D.data(), args.ref_D.layout()},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                {1,1}); // TODO: FIND A WAY TO RETRIEVE ALPHA AND BETA, THE ptr BELOW DO NOT WORK
+                //{args.epilogue.alpha_ptr, args.epilogue.beta_ptr}); // Scalars used in the Epilogue
+                //{0.0, 0.0});
+    }
+    
 
     return status;
 

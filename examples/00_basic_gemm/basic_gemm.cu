@@ -105,12 +105,28 @@ cudaError_t CutlassSgemmNN(
   using RowMajor = cutlass::layout::RowMajor;
 
   // parameters not set will be assigned to the default values
+  // using CutlassGemm = cutlass::gemm::device::Gemm<float,        // Data-type of A matrix
+  //                                                 RowMajor,  // Layout of A matrix
+  //                                                 float,        // Data-type of B matrix
+  //                                                 RowMajor,  // Layout of B matrix
+  //                                                 float,        // Data-type of C matrix
+  //                                                 RowMajor>; // Layout of C matrix
+
   using CutlassGemm = cutlass::gemm::device::Gemm<float,        // Data-type of A matrix
-                                                  RowMajor,  // Layout of A matrix
-                                                  float,        // Data-type of B matrix
-                                                  RowMajor,  // Layout of B matrix
-                                                  float,        // Data-type of C matrix
-                                                  RowMajor>; // Layout of C matrix
+                                                RowMajor,  // Layout of A matrix
+                                                float,        // Data-type of B matrix
+                                                RowMajor,  // Layout of B matrix
+                                                float,        // Data-type of C matrix
+                                                RowMajor, // Layout of C matrix
+                                                float,
+                                                cutlass::arch::OpClassTensorOp,
+                                                cutlass::arch::Sm80,
+                                                cutlass::gemm::GemmShape<128, 128, 16>,
+                                                cutlass::gemm::GemmShape<64, 64, 16>,
+                                                cutlass::gemm::GemmShape<16, 8, 8>,
+                                                cutlass::epilogue::thread::LinearCombination<float, 128 / cutlass::sizeof_bits<float>::value, float,float>,
+                                                cutlass::gemm::threadblock::GemmIdentityThreadblockSwizzle<>,
+                                                2>; // if this value is higher than 2 then mmaMulistage will be selected (mmaPipelined has a maximum depth of 2)
 
   // Define a CUTLASS GEMM type
   CutlassGemm gemm_operator;
@@ -494,25 +510,25 @@ cudaError_t TestCutlassGemm(int M, int N, int K, float alpha, float beta) {
   cudaFree(A);
 
   // print the results
-  std::cout << "CUTLASS:\n";
-  cnt = 0;
-  for (float i: host_cutlass){
-    cnt++;
-    std::cout << i << ' ';
-    if(cnt % M == 0)
-      std::cout << "\n";
-  }
-  std::cout << "\n";
+  // std::cout << "CUTLASS:\n";
+  // cnt = 0;
+  // for (float i: host_cutlass){
+  //   cnt++;
+  //   std::cout << i << ' ';
+  //   if(cnt % M == 0)
+  //     std::cout << "\n";
+  // }
+  // std::cout << "\n";
 
-  std::cout << "REFERENCE:\n";
-  cnt = 0;
-  for (float i: host_reference){
-    cnt++;
-    std::cout << i << ' ';
-    if(cnt % M == 0)
-      std::cout << "\n";
-  }
-  std::cout << "\n";
+  // std::cout << "REFERENCE:\n";
+  // cnt = 0;
+  // for (float i: host_reference){
+  //   cnt++;
+  //   std::cout << i << ' ';
+  //   if(cnt % M == 0)
+  //     std::cout << "\n";
+  // }
+  // std::cout << "\n";
 
   //
   // Test for bit equivalence of results.
@@ -551,7 +567,7 @@ int main(int argc, const char *arg[]) {
   // define a handler for sigint to clear cuda context before quitting
   signal(SIGINT, sigintHandler);
   // GEMM problem dimensions.
-  int problem[3] = { 16, 16, 16 };
+  int problem[3] = { 128, 128, 128 };
   //int problem[3] = { 4, 4, 4 };
 
   for (int i = 1; i < argc && i < 4; ++i) {
