@@ -74,6 +74,8 @@ struct Gemm {
     cutlass::gemm::GemmCoord problem_size;
     cutlass::gemm::GemmCoord grid_tiled_shape;
     int swizzle_log_tile;
+    float * ref_D1;
+    float * ref_D2;
     typename Mma::IteratorA::Params params_A;
     typename Mma::IteratorA::TensorRef ref_A;
     typename Mma::IteratorB::Params params_B;
@@ -105,6 +107,8 @@ struct Gemm {
       typename Mma::IteratorB::TensorRef ref_B,
       typename Epilogue::OutputTileIterator::TensorRef ref_C,
       typename Epilogue::OutputTileIterator::TensorRef ref_D,
+      float * ref_D1,
+      float * ref_D2,
       typename OutputOp::Params output_op = typename OutputOp::Params(),
       int *workspace = nullptr,
       int const *gather_A_indices = nullptr,
@@ -122,6 +126,8 @@ struct Gemm {
       ref_C(ref_C),
       params_D(ref_D.layout()),
       ref_D(ref_D),
+      ref_D1(ref_D1),
+      ref_D2(ref_D2),
       output_op(output_op),
       gather_A_indices(gather_A_indices),
       gather_B_indices(gather_B_indices),
@@ -210,7 +216,7 @@ struct Gemm {
 
     // based on the block ids (computed in threadblock_swizzle.h)
     cutlass::gemm::GemmCoord threadblock_tile_offset =
-        threadblock_swizzle.get_tile_offset(params.swizzle_log_tile);
+        threadblock_swizzle.get_tile_offset(params.grid_tiled_shape);
 
     // Early exit if CTA is out of range
     if (params.grid_tiled_shape.m() <= threadblock_tile_offset.m() ||
@@ -296,7 +302,7 @@ struct Gemm {
     //
 
     threadblock_tile_offset =
-        threadblock_swizzle.get_tile_offset(params.swizzle_log_tile);
+        threadblock_swizzle.get_tile_offset(params.grid_tiled_shape);
 
     //assume identity swizzle
     MatrixCoord threadblock_offset(
@@ -329,10 +335,19 @@ struct Gemm {
       params.scatter_D_indices
     );
 
+    float *dest;
+    if (blockIdx.x < params.grid_tiled_shape.m()){
+      dest = params.ref_D.data();
+    } else if (blockIdx.x >= params.grid_tiled_shape.m() && blockIdx.x < params.grid_tiled_shape.m() * 2){
+      dest = params.ref_D1;
+    } else {
+      dest = params.ref_D2;
+    }
+
     // Tile iterator writing to destination tensor.
     typename Epilogue::OutputTileIterator iterator_D(
       params.params_D,
-      params.ref_D.data(),
+      dest,
       params.problem_size.mn(),
       thread_idx,
       threadblock_offset,

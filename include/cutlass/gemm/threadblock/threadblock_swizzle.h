@@ -109,10 +109,12 @@ struct GemmIdentityThreadblockSwizzle {
   CUTLASS_HOST_DEVICE
   static dim3 get_grid_shape(GemmCoord tiled_shape) {
     int tile = 1 << get_log_tile(tiled_shape);
-    return dim3(tiled_shape.m() * tile, (tiled_shape.n() + tile - 1) / tile, tiled_shape.k());
+    // triplicate the blocks in the x direction
+    return dim3(tiled_shape.m() * tile * 3, (tiled_shape.n() + tile - 1) / tile, tiled_shape.k());
   }
 
   /// Calculates optimal swizzle width
+  // it is 0 if no N is passed as part of the template declaration (since by default N = 1)
   CUTLASS_HOST_DEVICE
   static int get_log_tile(GemmCoord tiled_shape) {
     auto n = tiled_shape.n();
@@ -129,13 +131,14 @@ struct GemmIdentityThreadblockSwizzle {
 
   /// Obtains the threadblock offset (in units of threadblock-scoped tiles)
   CUTLASS_DEVICE
-  static GemmCoord get_tile_offset(int log_tile) {
+  static GemmCoord get_tile_offset(int log_tile, GemmCoord tiled_shape) {
     int block_idx_x = RematerializeBlockIdxX();
     int block_idx_y = RematerializeBlockIdxY();
     int block_idx_z = RematerializeBlockIdxZ();
 
-    return GemmCoord{(block_idx_x >> log_tile),  //
-                     (block_idx_y << log_tile) + ((block_idx_x) & ((1 << (log_tile)) - 1)),
+    // assign redudant threads to the same matrix positions as the original ones
+    return GemmCoord{((block_idx_x % tiled_shape.m()) >> log_tile),  //
+                     (block_idx_y << log_tile) + ((block_idx_x % tiled_shape.m()) & ((1 << (log_tile)) - 1)),
                      block_idx_z};
   }
 
@@ -148,11 +151,11 @@ struct GemmIdentityThreadblockSwizzle {
     int block_idx_y = RematerializeBlockIdxY();
 
     if ((tiled_shape.m() < kTile) || (tiled_shape.n() < kTile))
-      return GemmCoord{block_idx_x, block_idx_y, RematerializeBlockIdxZ()};
+      return GemmCoord{(block_idx_x % tiled_shape.m()), block_idx_y, RematerializeBlockIdxZ()};
 
     return GemmCoord{
-      (block_idx_x / kTile),
-      (block_idx_y * kTile) + (block_idx_x % kTile),
+      ((block_idx_x % tiled_shape.m()) / kTile),
+      (block_idx_y * kTile) + ((block_idx_x % tiled_shape.m()) % kTile),
       RematerializeBlockIdxZ()
     };
   }

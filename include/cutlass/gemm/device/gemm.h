@@ -527,7 +527,7 @@ public:
   }
 
   /// Initializes GEMM state from arguments.
-  Status initialize(Arguments const &args, void *workspace = nullptr, cudaStream_t stream = nullptr) {
+  Status initialize(Arguments const &args, float *D[TMR], void *workspace = nullptr, cudaStream_t stream = nullptr) {
 
     // Determine grid shape
     ThreadblockSwizzle threadblock_swizzle;
@@ -570,6 +570,8 @@ public:
       args.ref_B.non_const_ref(),
       args.ref_C.non_const_ref(),
       args.ref_D,
+      D[0], // additional matrix for TMR
+      D[1], // additional matrix for TMR
       args.epilogue,
       static_cast<int *>(workspace),
       args.gather_A_indices,
@@ -620,6 +622,8 @@ public:
 
     // the params_ is one of the parameters that are passed to the template, it is defined as a type in ell_gemm.h
     // and initialized in the Initialize() function
+    // the grid_tiled_shape corresponds to the output of the get_tiled_shape called as part of the initialization
+    // and the grid is equal to the grid_tiled_shape as a result of the fact that the swizzle template is called with default parameters
     dim3 grid = threadblock_swizzle.get_grid_shape(params_.grid_tiled_shape);
 
     // kThreadCount is defined inside the Gemm operator definition in include/kernel/gemm.h (kernel namespace)
@@ -669,6 +673,7 @@ public:
     void *workspace = nullptr, 
     cudaStream_t stream = nullptr) {
 
+    
     /*
 
     std::cout << "alpha: " << args.epilogue.alpha_ptr << ", beta: " << args.epilogue.beta_ptr << "\n";
@@ -684,11 +689,59 @@ public:
             //{args.epilogue.alpha_ptr, args.epilogue.beta_ptr}); // Scalars used in the Epilogue
 
     */
-    Status status = initialize(args, workspace, stream);
+    float* D[TMR]; // Additional matrices for TMR (DEV)
+    cudaError_t result;
+    float *host_D[TMR];
+
+    for (int i = 0; i< TMR; i++)
+      host_D[i] = (float *)malloc(args.problem_size.m()*args.problem_size.n()*sizeof(float));
+
+    result = AllocateMatrix(&D[0], args.problem_size.m(), args.problem_size.n());
+
+    std::cout << "D[0] data: " << D[0] << "\n";
+    
+    if(result != cudaSuccess){
+      return Status::kErrorInternal;
+    }
+
+    std::cout << "D[1] address: " << &D[1] << "\n";
+    result = AllocateMatrix(&D[1], args.problem_size.m(), args.problem_size.n());
+    
+    if(result != cudaSuccess){
+      cudaFree(D[0]);
+      return Status::kErrorInternal;
+    }
+    Status status = initialize(args, D, workspace, stream);
     
     if (status == Status::kSuccess) {
       status = run(stream);
     }
+
+    cudaMemcpy(host_D[0], args.ref_D.data(), args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(host_D[1], D[0], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(host_D[2], D[1], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
+
+    std::cout << "D[0]:\n";
+    for (int cnt = 0; cnt < args.problem_size.m() * args.problem_size.n(); cnt++){
+      std::cout << host_D[0][cnt] << ' ';
+      if(cnt % args.problem_size.m() * args.problem_size.n() == args.problem_size.m() * args.problem_size.n() - 1)
+        std::cout << "\n";
+    }
+    std::cout << "\n";
+    std::cout << "D[1]:\n";
+    for (int cnt = 0; cnt < args.problem_size.m() * args.problem_size.n(); cnt++){
+      std::cout << host_D[1][cnt] << ' ';
+      if(cnt % args.problem_size.m() * args.problem_size.n() == args.problem_size.m() * args.problem_size.n() - 1)
+        std::cout << "\n";
+    }
+    std::cout << "\n";
+    std::cout << "D[2]:\n";
+    for (int cnt = 0; cnt < args.problem_size.m() * args.problem_size.n(); cnt++){
+      std::cout << host_D[2][cnt] << ' ';
+      if(cnt % args.problem_size.m() * args.problem_size.n() == args.problem_size.m() * args.problem_size.n() - 1)
+        std::cout << "\n";
+    }
+    std::cout << "\n";
 
     return status;
 
