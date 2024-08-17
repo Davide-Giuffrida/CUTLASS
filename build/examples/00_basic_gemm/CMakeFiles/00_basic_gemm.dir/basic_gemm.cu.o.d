@@ -581,4 +581,16 @@ examples/00_basic_gemm/CMakeFiles/00_basic_gemm.dir/basic_gemm.cu.o : /home/m.gp
     /home/m.gpuprog/cutlass_project/CUTLASS/include/cutlass/epilogue/warp/wmma_tensor_op_policy.h \
     /home/m.gpuprog/cutlass_project/CUTLASS/include/cutlass/epilogue/warp/tile_iterator_wmma_tensor_op.h \
     /home/m.gpuprog/cutlass_project/CUTLASS/include/cutlass/epilogue/threadblock/default_thread_map_wmma_tensor_op.h \
-    /home/m.gpuprog/cutlass_project/CUTLASS/include/cutlass/gemm/device/default_gemm_configuration.h
+    /home/m.gpuprog/cutlass_project/CUTLASS/include/cutlass/gemm/device/default_gemm_configuration.h \
+    /usr/local/cuda-11.6/include/cooperative_groups.h \
+    /usr/local/cuda-11.6/include/cooperative_groups/details/info.h \
+    /usr/local/cuda-11.6/include/cooperative_groups/details/driver_abi.h \
+    /usr/local/cuda-11.6/include/cooperative_groups/details/helpers.h \
+    /usr/local/cuda-11.6/include/cooperative_groups/details/sync.h \
+    /usr/local/cuda-11.6/include/cooperative_groups/details/partitioning.h \
+    /usr/local/cuda-11.6/include/cooperative_groups/reduce.h \
+    /usr/local/cuda-11.6/targets/x86_64-linux/include/cooperative_groups.h \
+    /usr/local/cuda-11.6/include/cooperative_groups/details/reduce.h \
+    /usr/local/cuda-11.6/include/cooperative_groups/details/coalesced_reduce.h \
+    /usr/local/cuda-11.6/include/cooperative_groups/details/coalesced_scan.h \
+    /usr/local/cuda-11.6/include/cooperative_groups/details/functional.h

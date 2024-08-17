@@ -50,7 +50,12 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
+#include <cooperative_groups.h>
+#include <cooperative_groups/reduce.h>
+
 ////////////////////////////////////////////////////////////////////////////////
+
+namespace cg = cooperative_groups;
 
 namespace cutlass {
 namespace gemm {
@@ -476,8 +481,9 @@ public:
               since we already know the matrixes dimension.
               Statically alloc. smem should be enough if we want to use it.
     */
-    CopyMatrix_kernel<<<grid,block,0,stream>>>(dstMatrix, srcMatrix, rows, columns);
-    
+    //CopyMatrix_kernel<<<grid,block,0,stream>>>(dstMatrix, srcMatrix, rows, columns);
+    cudaLaunchCooperativeKernel((void *)reduceSinglePassMultiBlockCG, dimGrid, dimBlock, kernelArgs, smemSize, NULL);
+
     // Returns static errors during the kernel allocation since there is no synch that would allow to
     // wait for detection of errors during the kernel computation 
     return cudaGetLastError();

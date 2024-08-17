@@ -556,7 +556,6 @@ int main(int argc, const char *arg[]) {
   //
   // Parse the command line to obtain GEMM dimensions and scalar values.
   //
-
   // define a handler for sigint to clear cuda context before quitting
   signal(SIGINT, sigintHandler);
   // GEMM problem dimensions.

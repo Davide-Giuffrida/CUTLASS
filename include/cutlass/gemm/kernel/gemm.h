@@ -284,11 +284,25 @@ struct Gemm {
 
     accumulators.clear();
 
+    int block_idx = threadblock_tile_offset.m() + threadblock_tile_offset.n() * params.grid_tiled_shape.m();
+
+    float *dest;
+    char is_master = 0;
+    if (blockIdx.x < params.grid_tiled_shape.m()){
+      // you want use an external matrix as an accumulator, so we can't use ref_D as placeholder
+      dest = params.ref_D.data();
+      is_master = 1;
+    } else if (blockIdx.x >= params.grid_tiled_shape.m() && blockIdx.x < params.grid_tiled_shape.m() * 2){
+      dest = params.ref_D1;
+    } else {
+      dest = params.ref_D2;
+    }
+
     // this is related to a single block
     if (!kSplitKSerial || gemm_k_iterations > 0) {
       // Compute threadblock-scoped matrix multiply-add
       // the iterations over all the blocks are done through the iterators (they move through the two matrices)
-      mma(gemm_k_iterations, accumulators, iterator_A, iterator_B, accumulators);
+      mma(gemm_k_iterations, accumulators, iterator_A, iterator_B, accumulators, is_master, dest, params.grid_tiled_shape, threadblock_tile_offset, params.ref_D1, params.ref_D2);
     }
 
     //
@@ -309,8 +323,6 @@ struct Gemm {
       threadblock_tile_offset.m() * Mma::Shape::kM,
       threadblock_tile_offset.n() * Mma::Shape::kN
     );
-
-    int block_idx = threadblock_tile_offset.m() + threadblock_tile_offset.n() * params.grid_tiled_shape.m();
 
     // Construct the semaphore.
     Semaphore semaphore(params.semaphore + block_idx, thread_idx);
@@ -335,19 +347,10 @@ struct Gemm {
       params.scatter_D_indices
     );
 
-    float *dest;
-    if (blockIdx.x < params.grid_tiled_shape.m()){
-      dest = params.ref_D.data();
-    } else if (blockIdx.x >= params.grid_tiled_shape.m() && blockIdx.x < params.grid_tiled_shape.m() * 2){
-      dest = params.ref_D1;
-    } else {
-      dest = params.ref_D2;
-    }
-
     // Tile iterator writing to destination tensor.
     typename Epilogue::OutputTileIterator iterator_D(
       params.params_D,
-      dest,
+      params.ref_D.data(),
       params.problem_size.mn(),
       thread_idx,
       threadblock_offset,
@@ -374,7 +377,10 @@ struct Gemm {
 
     // The epilogue is in epilogue.h/threadblock
     // Execute the epilogue operator to update the destination tensor.
-    epilogue(output_op, iterator_D, accumulators, iterator_C); 
+    // the epilogue should be executed only on the master threads
+    if (blockIdx.x < params.grid_tiled_shape.m()){
+      epilogue(output_op, iterator_D, accumulators, iterator_C); 
+    }
     
     //
     // Release the semaphore
