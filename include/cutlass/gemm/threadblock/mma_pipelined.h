@@ -44,8 +44,12 @@
 
 #include "cutlass/gemm/gemm.h"
 #include "cutlass/gemm/threadblock/mma_base.h"
+#include <cooperative_groups.h>
+#include <cooperative_groups/reduce.h>
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
+
+namespace cg = cooperative_groups;
 
 namespace cutlass {
 namespace gemm {
@@ -292,7 +296,8 @@ public:
     GemmCoord grid_size,
     GemmCoord tile_offset,
     float *D1,
-    float *D2)
+    float *D2,
+    cg::grid_group grid)
   {
     using WarpFragmentA = typename Operator::FragmentA;
     using WarpFragmentB = typename Operator::FragmentB;
@@ -315,7 +320,7 @@ public:
 
     // Pair of fragments used to overlap global memory loads and math instructions;
     // array_subbyte.h in include/cutlass for Array Type definition. The Array type is used to build the fragment, since
-    // the Fragment type itself is defined as: using Fragment = Array< Element, Policy::MmaIterations::kCount * InstructionShape::kMN / kThreads>;
+    // the Fragment type itself is defined (inside Iterator) as: using Fragment = Array< Element, Policy::MmaIterations::kCount * InstructionShape::kMN / kThreads>;
     FragmentA tb_frag_A;
     FragmentB tb_frag_B;
 
@@ -405,13 +410,20 @@ public:
       // compute the index where to write
       int index = grid_size.n() * tile_offset.m() * blockDim.x + tile_offset.n() * blockDim.x  + threadIdx.x; 
 
+      // printf("storage elems: %d", accum.kStorageElements);
+      // printf("index: %d\n", index * accum.kStorageElements);
       // perform the actual write over destination, only if you are not master thread
       if (!is_master)
         for (int i = 0; i < accum.kStorageElements; i++)
           destination[index * accum.kStorageElements + i] = accum.data()[i];
 
+      // for (int i = 0; i < accum.kStorageElements; i++)
+      //     printf("%f ", accum.data()[i]);
+      // printf("\n");
+
       // synchronize all threads in the grid
       // TODO: ...
+      cg::sync(grid);
 
       // perform checks in the master threads to assess which thread produced the right results
       int mas_copy1 = 1;
@@ -434,22 +446,23 @@ public:
           // adjust D2
           for (int i = 0; i < accum.kStorageElements; i++)
             D2[index * accum.kStorageElements + i] = accum.data()[i];
-        if (mas_copy2 == 1)
+        else if (mas_copy2 == 1)
           // adjust D1
           for (int i = 0; i < accum.kStorageElements; i++)
             D1[index * accum.kStorageElements + i] = accum.data()[i];
-        if (copy1_copy2 == 1)
+        else if (copy1_copy2 == 1)
           // adjust master
           for (int i = 0; i < accum.kStorageElements; i++)
             accum.data()[i] = D2[index * accum.kStorageElements + i];
       }
       // synchronization point to force the non master threads to wait for the master
       // TODO: ...
+      cg::sync(grid);
 
       // load the new results back in the local accumulators
-      if (!is_master)
-        for (int i = 0; i < accum.kStorageElements; i++)
-          accum.data()[i] = destination[index * accum.kStorageElements + i];
+      // if (!is_master)
+      //   for (int i = 0; i < accum.kStorageElements; i++)
+      //     accum.data()[i] = destination[index * accum.kStorageElements + i];
       
     }
 
@@ -495,7 +508,8 @@ public:
     GemmCoord grid_size,
     GemmCoord tile_offset,
     float * D1,
-    float * D2)
+    float * D2,
+    cg::grid_group grid )
   {
     // Prologue
     prologue(iterator_A, iterator_B, gemm_k_iterations);
@@ -507,7 +521,7 @@ public:
     accum = src_accum;
 
     // Perform the MAC-iterations
-    gemm_iters(gemm_k_iterations, accum, iterator_A, iterator_B, is_master, destination, grid_size, tile_offset, D1, D2);
+    gemm_iters(gemm_k_iterations, accum, iterator_A, iterator_B, is_master, destination, grid_size, tile_offset, D1, D2, grid);
   }
 
 };

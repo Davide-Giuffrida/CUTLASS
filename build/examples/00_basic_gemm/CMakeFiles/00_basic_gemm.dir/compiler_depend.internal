@@ -437,6 +437,18 @@ examples/00_basic_gemm/CMakeFiles/00_basic_gemm.dir/basic_gemm.cu.o
  /home/m.gpuprog/cutlass_project/CUTLASS/include/cutlass/trace.h
  /home/m.gpuprog/cutlass_project/CUTLASS/include/cutlass/gemm/kernel/gemm.h
  /home/m.gpuprog/cutlass_project/CUTLASS/include/cutlass/semaphore.h
+ /usr/local/cuda-11.6/include/cooperative_groups.h
+ /usr/local/cuda-11.6/include/cooperative_groups/details/info.h
+ /usr/local/cuda-11.6/include/cooperative_groups/details/driver_abi.h
+ /usr/local/cuda-11.6/include/cooperative_groups/details/helpers.h
+ /usr/local/cuda-11.6/include/cooperative_groups/details/sync.h
+ /usr/local/cuda-11.6/include/cooperative_groups/details/partitioning.h
+ /usr/local/cuda-11.6/include/cooperative_groups/reduce.h
+ /usr/local/cuda-11.6/targets/x86_64-linux/include/cooperative_groups.h
+ /usr/local/cuda-11.6/include/cooperative_groups/details/reduce.h
+ /usr/local/cuda-11.6/include/cooperative_groups/details/coalesced_reduce.h
+ /usr/local/cuda-11.6/include/cooperative_groups/details/coalesced_scan.h
+ /usr/local/cuda-11.6/include/cooperative_groups/details/functional.h
  /home/m.gpuprog/cutlass_project/CUTLASS/include/cutlass/gemm/kernel/default_gemm.h
  /home/m.gpuprog/cutlass_project/CUTLASS/include/cutlass/arch/wmma.h
  /usr/local/cuda-11.6/include/mma.h

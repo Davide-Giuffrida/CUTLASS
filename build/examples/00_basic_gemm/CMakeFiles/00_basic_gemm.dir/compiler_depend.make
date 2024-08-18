@@ -436,6 +436,18 @@ examples/00_basic_gemm/CMakeFiles/00_basic_gemm.dir/basic_gemm.cu.o: ../examples
   ../include/cutlass/trace.h \
   ../include/cutlass/gemm/kernel/gemm.h \
   ../include/cutlass/semaphore.h \
+  /usr/local/cuda-11.6/include/cooperative_groups.h \
+  /usr/local/cuda-11.6/include/cooperative_groups/details/info.h \
+  /usr/local/cuda-11.6/include/cooperative_groups/details/driver_abi.h \
+  /usr/local/cuda-11.6/include/cooperative_groups/details/helpers.h \
+  /usr/local/cuda-11.6/include/cooperative_groups/details/sync.h \
+  /usr/local/cuda-11.6/include/cooperative_groups/details/partitioning.h \
+  /usr/local/cuda-11.6/include/cooperative_groups/reduce.h \
+  /usr/local/cuda-11.6/targets/x86_64-linux/include/cooperative_groups.h \
+  /usr/local/cuda-11.6/include/cooperative_groups/details/reduce.h \
+  /usr/local/cuda-11.6/include/cooperative_groups/details/coalesced_reduce.h \
+  /usr/local/cuda-11.6/include/cooperative_groups/details/coalesced_scan.h \
+  /usr/local/cuda-11.6/include/cooperative_groups/details/functional.h \
   ../include/cutlass/gemm/kernel/default_gemm.h \
   ../include/cutlass/arch/wmma.h \
   /usr/local/cuda-11.6/include/mma.h \
@@ -641,6 +653,18 @@ examples/00_basic_gemm/CMakeFiles/00_basic_gemm.dir/basic_gemm.cu.o: ../examples
 
 ../include/cutlass/epilogue/thread/linear_combination_clamp.h:
 
+../include/cutlass/gemm/warp/mma_tensor_op_tile_iterator_wmma.h:
+
+../include/cutlass/transform/threadblock/regular_tile_iterator_pitch_linear_2dthreadtile.h:
+
+../include/cutlass/transform/threadblock/regular_tile_iterator_pitch_linear.h:
+
+../include/cutlass/gemm/threadblock/default_mma_core_simt.h:
+
+../include/cutlass/transform/thread/transpose.h:
+
+../include/cutlass/transform/threadblock/predicated_tile_iterator_2dthreadtile.h:
+
 /usr/include/c++/9/bits/locale_classes.tcc:
 
 /usr/include/x86_64-linux-gnu/bits/types/struct_FILE.h:
@@ -673,8 +697,6 @@ examples/00_basic_gemm/CMakeFiles/00_basic_gemm.dir/basic_gemm.cu.o: ../examples
 
 /usr/include/x86_64-linux-gnu/bits/cpu-set.h:
 
-/usr/local/cuda-11.6/include/cuda_surface_types.h:
-
 /usr/include/c++/9/bits/memoryfwd.h:
 
 /usr/include/c++/9/cerrno:
@@ -686,8 +708,6 @@ examples/00_basic_gemm/CMakeFiles/00_basic_gemm.dir/basic_gemm.cu.o: ../examples
 /usr/include/c++/9/tr1/poly_laguerre.tcc:
 
 ../include/cutlass/numeric_types.h:
-
-../include/cutlass/transform/threadblock/predicated_tile_iterator_2dthreadtile.h:
 
 /usr/include/ctype.h:
 
@@ -847,6 +867,10 @@ examples/00_basic_gemm/CMakeFiles/00_basic_gemm.dir/basic_gemm.cu.o: ../examples
 
 ../include/cutlass/gemm/warp/mma_complex_tensor_op_fast_f32.h:
 
+../include/cutlass/transform/threadblock/predicated_tile_access_iterator_params.h:
+
+/usr/include/c++/9/bits/stl_iterator_base_funcs.h:
+
 /usr/local/cuda-11.6/include/cuda_texture_types.h:
 
 /usr/include/c++/9/string:
@@ -977,8 +1001,6 @@ examples/00_basic_gemm/CMakeFiles/00_basic_gemm.dir/basic_gemm.cu.o: ../examples
 
 /usr/include/c++/9/system_error:
 
-/usr/include/x86_64-linux-gnu/bits/xopen_lim.h:
-
 /usr/include/time.h:
 
 /usr/include/c++/9/bits/hashtable.h:
@@ -988,8 +1010,6 @@ examples/00_basic_gemm/CMakeFiles/00_basic_gemm.dir/basic_gemm.cu.o: ../examples
 /usr/local/cuda-11.6/include/crt/device_functions.h:
 
 /usr/include/x86_64-linux-gnu/bits/types/siginfo_t.h:
-
-/usr/include/x86_64-linux-gnu/bits/flt-eval-method.h:
 
 /usr/include/c++/9/bits/basic_string.tcc:
 
@@ -1009,6 +1029,10 @@ examples/00_basic_gemm/CMakeFiles/00_basic_gemm.dir/basic_gemm.cu.o: ../examples
 
 /usr/include/c++/9/optional:
 
+../include/cutlass/transform/threadblock/predicated_tile_access_iterator.h:
+
+/usr/include/c++/9/bits/ios_base.h:
+
 /usr/include/x86_64-linux-gnu/bits/floatn-common.h:
 
 /usr/local/cuda-11.6/include/crt/host_config.h:
@@ -1020,6 +1044,10 @@ examples/00_basic_gemm/CMakeFiles/00_basic_gemm.dir/basic_gemm.cu.o: ../examples
 /usr/include/x86_64-linux-gnu/bits/stdlib-bsearch.h:
 
 /usr/include/c++/9/bits/allocator.h:
+
+../include/cutlass/epilogue/threadblock/default_epilogue_tensor_op.h:
+
+/usr/include/c++/9/string_view:
 
 /usr/local/cuda-11.6/include/cuda_fp16.h:
 
@@ -1086,6 +1114,10 @@ examples/00_basic_gemm/CMakeFiles/00_basic_gemm.dir/basic_gemm.cu.o: ../examples
 /usr/include/x86_64-linux-gnu/bits/types/__fpos64_t.h:
 
 /usr/local/cuda-11.6/include/surface_types.h:
+
+/usr/include/x86_64-linux-gnu/bits/xopen_lim.h:
+
+/usr/local/cuda-11.6/include/cooperative_groups/details/reduce.h:
 
 ../include/cutlass/epilogue/warp/tile_iterator_wmma_tensor_op.h:
 
@@ -1185,7 +1217,19 @@ examples/00_basic_gemm/CMakeFiles/00_basic_gemm.dir/basic_gemm.cu.o: ../examples
 
 /usr/include/c++/9/bits/locale_facets_nonio.h:
 
+/usr/include/x86_64-linux-gnu/bits/flt-eval-method.h:
+
+/usr/local/cuda-11.6/include/cooperative_groups/details/driver_abi.h:
+
 /usr/lib/gcc/x86_64-linux-gnu/9/include/stdarg.h:
+
+../include/cutlass/gemm/threadblock/default_mma_core_wmma.h:
+
+/usr/local/cuda-11.6/include/sm_20_atomic_functions.hpp:
+
+/usr/include/x86_64-linux-gnu/bits/types/time_t.h:
+
+/usr/include/x86_64-linux-gnu/bits/types/FILE.h:
 
 /usr/include/x86_64-linux-gnu/sys/cdefs.h:
 
@@ -1196,8 +1240,6 @@ examples/00_basic_gemm/CMakeFiles/00_basic_gemm.dir/basic_gemm.cu.o: ../examples
 /usr/local/cuda-11.6/include/crt/common_functions.h:
 
 /usr/include/c++/9/tr1/hypergeometric.tcc:
-
-/usr/include/c++/9/bits/uses_allocator.h:
 
 ../include/cute/numeric/arithmetic_tuple.hpp:
 
@@ -1263,6 +1305,8 @@ examples/00_basic_gemm/CMakeFiles/00_basic_gemm.dir/basic_gemm.cu.o: ../examples
 
 /usr/include/x86_64-linux-gnu/c++/9/bits/error_constants.h:
 
+/usr/local/cuda-11.6/include/cooperative_groups/details/coalesced_reduce.h:
+
 /usr/include/c++/9/bits/quoted_string.h:
 
 ../include/cutlass/tensor_ref.h:
@@ -1289,7 +1333,7 @@ examples/00_basic_gemm/CMakeFiles/00_basic_gemm.dir/basic_gemm.cu.o: ../examples
 
 /usr/include/x86_64-linux-gnu/c++/9/bits/ctype_base.h:
 
-../include/cutlass/numeric_conversion.h:
+/usr/local/cuda-11.6/include/cooperative_groups/details/info.h:
 
 /usr/include/c++/9/bits/streambuf_iterator.h:
 
@@ -1314,6 +1358,10 @@ examples/00_basic_gemm/CMakeFiles/00_basic_gemm.dir/basic_gemm.cu.o: ../examples
 ../include/cutlass/real.h:
 
 /usr/include/x86_64-linux-gnu/bits/siginfo-arch.h:
+
+../include/cutlass/gemm/warp/mma_tensor_op_wmma.h:
+
+/usr/include/c++/9/bits/stl_relops.h:
 
 /usr/include/c++/9/bits/vector.tcc:
 
@@ -1351,21 +1399,17 @@ examples/00_basic_gemm/CMakeFiles/00_basic_gemm.dir/basic_gemm.cu.o: ../examples
 
 ../include/cutlass/epilogue/threadblock/predicated_tile_iterator.h:
 
-/usr/include/c++/9/bits/stl_iterator_base_funcs.h:
-
-../include/cutlass/transform/threadblock/predicated_tile_access_iterator_params.h:
-
 ../examples/common/helper.h:
 
 ../include/cutlass/cutlass.h:
+
+/usr/local/cuda-11.6/include/cooperative_groups/details/partitioning.h:
 
 ../include/cutlass/detail/helper_macros.hpp:
 
 ../include/cutlass/gemm/threadblock/default_multistage_mma_complex_core_sm80.h:
 
 ../include/cutlass/integer_subbyte.h:
-
-../include/cutlass/gemm/warp/mma_tensor_op_tile_iterator_wmma.h:
 
 ../include/cutlass/platform/platform.h:
 
@@ -1409,17 +1453,7 @@ examples/00_basic_gemm/CMakeFiles/00_basic_gemm.dir/basic_gemm.cu.o: ../examples
 
 /usr/include/c++/9/bits/unordered_map.h:
 
-../include/cutlass/transform/threadblock/regular_tile_iterator_pitch_linear_2dthreadtile.h:
-
 /usr/include/c++/9/bits/erase_if.h:
-
-/usr/local/cuda-11.6/include/sm_20_atomic_functions.hpp:
-
-/usr/include/x86_64-linux-gnu/bits/types/time_t.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/FILE.h:
-
-../include/cutlass/gemm/threadblock/default_mma_core_wmma.h:
 
 ../include/cutlass/half.h:
 
@@ -1452,8 +1486,6 @@ examples/00_basic_gemm/CMakeFiles/00_basic_gemm.dir/basic_gemm.cu.o: ../examples
 ../include/cutlass/layout/matrix.h:
 
 ../include/cutlass/fast_math.h:
-
-../include/cutlass/transform/threadblock/regular_tile_iterator_pitch_linear.h:
 
 ../include/cutlass/array.h:
 
@@ -1530,6 +1562,8 @@ examples/00_basic_gemm/CMakeFiles/00_basic_gemm.dir/basic_gemm.cu.o: ../examples
 ../include/cutlass/gemm/kernel/gemm_pipelined.h:
 
 ../include/cute/numeric/complex.hpp:
+
+/usr/local/cuda-11.6/include/cooperative_groups.h:
 
 /usr/include/x86_64-linux-gnu/bits/types/sig_atomic_t.h:
 
@@ -1609,13 +1643,31 @@ examples/00_basic_gemm/CMakeFiles/00_basic_gemm.dir/basic_gemm.cu.o: ../examples
 
 ../include/cutlass/transform/threadblock/predicated_tile_iterator.h:
 
+/usr/local/cuda-11.6/include/cooperative_groups/details/helpers.h:
+
+/usr/local/cuda-11.6/include/mma.h:
+
+/usr/local/cuda-11.6/include/cuda_surface_types.h:
+
+/usr/local/cuda-11.6/include/cooperative_groups/details/sync.h:
+
+/usr/include/c++/9/bits/uses_allocator.h:
+
+/usr/local/cuda-11.6/include/cooperative_groups/reduce.h:
+
+../include/cutlass/numeric_conversion.h:
+
+/usr/local/cuda-11.6/targets/x86_64-linux/include/cooperative_groups.h:
+
+/usr/local/cuda-11.6/include/cooperative_groups/details/coalesced_scan.h:
+
 ../include/cutlass/gemm/kernel/default_gemm.h:
+
+../include/cutlass/gemm/warp/default_mma_tensor_op.h:
 
 ../include/cutlass/layout/vector.h:
 
 ../include/cutlass/arch/wmma.h:
-
-/usr/local/cuda-11.6/include/mma.h:
 
 /usr/local/cuda-11.6/include/crt/mma.hpp:
 
@@ -1687,11 +1739,11 @@ examples/00_basic_gemm/CMakeFiles/00_basic_gemm.dir/basic_gemm.cu.o: ../examples
 
 ../include/cutlass/transform/threadblock/regular_tile_access_iterator.h:
 
-../include/cutlass/gemm/warp/default_mma_tensor_op.h:
-
 /usr/include/c++/9/bits/basic_ios.tcc:
 
 /usr/include/c++/9/bits/cxxabi_forced.h:
+
+/usr/local/cuda-11.6/include/cooperative_groups/details/functional.h:
 
 ../include/cutlass/gemm/warp/mma_tensor_op_tile_iterator_sm80.h:
 
@@ -1738,19 +1790,3 @@ examples/00_basic_gemm/CMakeFiles/00_basic_gemm.dir/basic_gemm.cu.o: ../examples
 ../include/cutlass/gemm/warp/mma_gaussian_complex_tensor_op_tile_iterator_sm80.h:
 
 ../include/cutlass/gemm/threadblock/default_mma.h:
-
-/usr/include/c++/9/bits/ios_base.h:
-
-../include/cutlass/transform/threadblock/predicated_tile_access_iterator.h:
-
-../include/cutlass/transform/thread/transpose.h:
-
-../include/cutlass/gemm/threadblock/default_mma_core_simt.h:
-
-/usr/include/c++/9/bits/stl_relops.h:
-
-../include/cutlass/gemm/warp/mma_tensor_op_wmma.h:
-
-/usr/include/c++/9/string_view:
-
-../include/cutlass/epilogue/threadblock/default_epilogue_tensor_op.h:

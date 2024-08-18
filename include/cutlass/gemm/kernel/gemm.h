@@ -41,8 +41,12 @@
 #include "cutlass/matrix_coord.h"
 #include "cutlass/semaphore.h"
 #include "cutlass/arch/arch.h"
+#include <cooperative_groups.h>
+#include <cooperative_groups/reduce.h>
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
+
+namespace cg = cooperative_groups;
 
 namespace cutlass {
 namespace gemm {
@@ -211,6 +215,10 @@ struct Gemm {
   CUTLASS_DEVICE
   void operator()(Params const &params, SharedStorage &shared_storage) {
 
+    // handle to refer to the current block or to the whole grid
+    cg::thread_block block = cg::this_thread_block();
+    cg::grid_group grid = cg::this_grid();
+
     // Compute threadblock location
     ThreadblockSwizzle threadblock_swizzle;
 
@@ -302,7 +310,7 @@ struct Gemm {
     if (!kSplitKSerial || gemm_k_iterations > 0) {
       // Compute threadblock-scoped matrix multiply-add
       // the iterations over all the blocks are done through the iterators (they move through the two matrices)
-      mma(gemm_k_iterations, accumulators, iterator_A, iterator_B, accumulators, is_master, dest, params.grid_tiled_shape, threadblock_tile_offset, params.ref_D1, params.ref_D2);
+      mma(gemm_k_iterations, accumulators, iterator_A, iterator_B, accumulators, is_master, dest, params.grid_tiled_shape, threadblock_tile_offset, params.ref_D1, params.ref_D2, cg::this_grid());
     }
 
     //

@@ -134,10 +134,10 @@ cudaError_t CutlassSgemmNN(
   // arguments to kernels and (2.) minimized initialization overhead on kernel entry.
   //
   CutlassGemm::Arguments args({M , N, K},  // Gemm Problem dimensions
-                              {A, lda},    // Tensor-ref for source matrix A
-                              {B, ldb},    // Tensor-ref for source matrix B
-                              {C, ldc},    // Tensor-ref for source matrix C
-                              {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                              {A, K},    // Tensor-ref for source matrix A
+                              {B, N},    // Tensor-ref for source matrix B
+                              {C, N},    // Tensor-ref for source matrix C
+                              {C, N},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
                               {alpha, beta}); // Scalars used in the Epilogue
 
   //
@@ -276,11 +276,11 @@ __global__ void ReferenceGemm_kernel(
 
     for (int k = 0; k < K; ++k) {
       // accumulator += A[i + k * lda] * B[k + j * ldb];
-      accumulator += A[k + i * lda] * B[j + k * ldb];
+      accumulator += A[k + i * K] * B[j + k * N];
     }
 
     // C[i + j * ldc] = alpha * accumulator + beta * C[i + j * ldc];
-    C[j + i * ldc] = alpha * accumulator + beta * C[j + i * ldc];
+    C[j + i * N] = alpha * accumulator + beta * C[j + i * N];
   }
 }
 
@@ -367,7 +367,7 @@ cudaError_t TestCutlassGemm(int M, int N, int K, float alpha, float beta) {
   for(float i: host_A){
     cnt++;
     std::cout << i << ' ';
-    if(cnt % M == 0)
+    if(cnt % K == 0)
       std::cout << "\n";
   }
   std::cout << "\n";
@@ -377,7 +377,7 @@ cudaError_t TestCutlassGemm(int M, int N, int K, float alpha, float beta) {
   for(float i: host_B){
     cnt++;
     std::cout << i << ' ';
-    if(cnt % K == 0)
+    if(cnt % N == 0)
       std::cout << "\n";
   }
   std::cout << "\n";
@@ -503,25 +503,25 @@ cudaError_t TestCutlassGemm(int M, int N, int K, float alpha, float beta) {
   cudaFree(A);
 
   // print the results
-  std::cout << "CUTLASS:\n";
-  cnt = 0;
-  for (float i: host_cutlass){
-    cnt++;
-    std::cout << i << ' ';
-    if(cnt % M == 0)
-      std::cout << "\n";
-  }
-  std::cout << "\n";
+  // std::cout << "CUTLASS:\n";
+  // cnt = 0;
+  // for (float i: host_cutlass){
+  //   cnt++;
+  //   std::cout << i << ' ';
+  //   if(cnt % M == 0)
+  //     std::cout << "\n";
+  // }
+  // std::cout << "\n";
 
-  std::cout << "REFERENCE:\n";
-  cnt = 0;
-  for (float i: host_reference){
-    cnt++;
-    std::cout << i << ' ';
-    if(cnt % M == 0)
-      std::cout << "\n";
-  }
-  std::cout << "\n";
+  // std::cout << "REFERENCE:\n";
+  // cnt = 0;
+  // for (float i: host_reference){
+  //   cnt++;
+  //   std::cout << i << ' ';
+  //   if(cnt % M == 0)
+  //     std::cout << "\n";
+  // }
+  // std::cout << "\n";
 
   //
   // Test for bit equivalence of results.
@@ -558,8 +558,11 @@ int main(int argc, const char *arg[]) {
   //
   // define a handler for sigint to clear cuda context before quitting
   signal(SIGINT, sigintHandler);
+  cudaDeviceProp deviceProp;
+  cudaGetDeviceProperties(&deviceProp, 0);
+  std::cout << "number of SM: " << deviceProp.multiProcessorCount << "\n";
   // GEMM problem dimensions.
-  int problem[3] = { 16, 16, 16 };
+  int problem[3] = {32,32,4};
   //int problem[3] = { 4, 4, 4 };
 
   for (int i = 1; i < argc && i < 4; ++i) {
