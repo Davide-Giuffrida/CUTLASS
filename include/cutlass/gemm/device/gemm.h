@@ -751,6 +751,9 @@ public:
       // compute the number of columns blocks per each kernel
       int column_blocks_no = grid.y / ceil(((float)grid.y) / (((float)SM_no) / 3));
 
+      if (column_blocks_no > 8)
+        column_blocks_no = 8;
+
       // print some messages to inform the user about the need to divide execution in multiple kernels
       std::cout << "number of blocks: " << (grid.x * grid.y * grid.z) << " vs number of SM: " << SM_no << "\n";
 
