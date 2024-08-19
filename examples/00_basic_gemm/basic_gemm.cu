@@ -362,25 +362,25 @@ cudaError_t TestCutlassGemm(int M, int N, int K, float alpha, float beta) {
   result = cudaMemcpy(host_B.data(), B, sizeof_B, cudaMemcpyDeviceToHost);
   //TODO: AS ABOVE
 
-  int cnt = 0;
-  std::cout << "A:\n";
-  for(float i: host_A){
-    cnt++;
-    std::cout << i << ' ';
-    if(cnt % K == 0)
-      std::cout << "\n";
-  }
-  std::cout << "\n";
+  // int cnt = 0;
+  // std::cout << "A:\n";
+  // for(float i: host_A){
+  //   cnt++;
+  //   std::cout << i << ' ';
+  //   if(cnt % K == 0)
+  //     std::cout << "\n";
+  // }
+  // std::cout << "\n";
 
-  cnt = 0;
-  std::cout << "B:\n";
-  for(float i: host_B){
-    cnt++;
-    std::cout << i << ' ';
-    if(cnt % N == 0)
-      std::cout << "\n";
-  }
-  std::cout << "\n";
+  // cnt = 0;
+  // std::cout << "B:\n";
+  // for(float i: host_B){
+  //   cnt++;
+  //   std::cout << i << ' ';
+  //   if(cnt % N == 0)
+  //     std::cout << "\n";
+  // }
+  // std::cout << "\n";
 
   result = AllocateMatrix(&C_cutlass, M, N, 101, false);
 
@@ -402,15 +402,15 @@ cudaError_t TestCutlassGemm(int M, int N, int K, float alpha, float beta) {
   result = cudaMemcpy(C_reference, C_cutlass, sizeof_C, cudaMemcpyDeviceToDevice);
   result = cudaMemcpy(host_C.data(), C_reference, sizeof_C, cudaMemcpyDeviceToHost);
 
-  std::cout << "C:\n";
-  cnt = 0;
-  for(float i: host_C){
-    cnt++;
-    std::cout << i << ' ';
-    if(cnt % M == 0)
-      std::cout << "\n";
-  }
-  std::cout << "\n";
+  // std::cout << "C:\n";
+  // cnt = 0;
+  // for(float i: host_C){
+  //   cnt++;
+  //   std::cout << i << ' ';
+  //   if(cnt % M == 0)
+  //     std::cout << "\n";
+  // }
+  // std::cout << "\n";
 
   if (result != cudaSuccess) {
     std::cerr << "Failed to copy C_cutlass matrix to C_reference: "
@@ -513,13 +513,20 @@ cudaError_t TestCutlassGemm(int M, int N, int K, float alpha, float beta) {
   // }
   // std::cout << "\n";
 
+
   // std::cout << "REFERENCE:\n";
-  // cnt = 0;
+  // int cnt = 0;
   // for (float i: host_reference){
-  //   cnt++;
-  //   std::cout << i << ' ';
-  //   if(cnt % M == 0)
+  //   // if(cnt / N == 32)
+  //   //     break;
+  //   // if (cnt % N < 32)
+  //     std::cout << i << ' ';
+  //     std::cout << '(' <<  host_cutlass.data()[cnt] << ") ";
+  //     //std::cout << '(' <<  i << ') ';
+  //   // if(cnt % N == 32)
+  //   if(cnt % N == N - 1)
   //     std::cout << "\n";
+  //   cnt++;
   // }
   // std::cout << "\n";
 
@@ -562,7 +569,7 @@ int main(int argc, const char *arg[]) {
   cudaGetDeviceProperties(&deviceProp, 0);
   std::cout << "number of SM: " << deviceProp.multiProcessorCount << "\n";
   // GEMM problem dimensions.
-  int problem[3] = {32,32,4};
+  int problem[3] = {4096,4096,4096};
   //int problem[3] = { 4, 4, 4 };
 
   for (int i = 1; i < argc && i < 4; ++i) {

@@ -686,7 +686,7 @@ public:
     void *workspace = nullptr, 
     cudaStream_t stream = nullptr) {
 
-    
+    std::cout << "thread count: " << GemmKernel::kThreadCount << "\n";
     /*
 
     std::cout << "alpha: " << args.epilogue.alpha_ptr << ", beta: " << args.epilogue.beta_ptr << "\n";
@@ -703,10 +703,23 @@ public:
 
     */
     float* D[TMR]; // Additional matrices for TMR (DEV)
+    float* B_sub;
+    float* C_sub;
+    float* D_sub;
     cudaError_t result;
     float *host_D[TMR];
+    Arguments arg_int;
 
     ThreadblockSwizzle threadblock_swizzle;
+    cudaDeviceProp deviceProp;
+    int SM_no;
+    Status status;
+
+    // retrieve the number of SMs
+    cudaGetDeviceProperties(&deviceProp, 0);
+    SM_no = deviceProp.multiProcessorCount;
+    // SM_no = 0;
+
     int inst_shape = InstructionShape::kM * InstructionShape::kN;
 
     cutlass::gemm::GemmCoord grid_shape = threadblock_swizzle.get_tiled_shape(
@@ -714,47 +727,171 @@ public:
       {ThreadblockShape::kM, ThreadblockShape::kN, ThreadblockShape::kK},
       args.split_k_slices);
 
+    // define the grid for the problem
+    dim3 grid = threadblock_swizzle.get_grid_shape(grid_shape);
+
     std::cout << "instruction shape: " << inst_shape << "\n";
+    std::cout << "grid size: " << grid << "\n";
+    std::cout << "grid_tiled_shape: " << grid_shape << "\n";
 
-    for (int i = 0; i< TMR; i++)
-      // host_D[i] = (float *)malloc(args.problem_size.m()*args.problem_size.n()*sizeof(float));
-      host_D[i] = (float *)malloc(inst_shape * GemmKernel::kThreadCount * grid_shape.n() * grid_shape.m() * sizeof(float));
+    // check if the matrix is too big for a cooperative launch
+    if (grid.x * grid.y * grid.z > SM_no) {
 
-    // result = AllocateMatrix(&D[0], args.problem_size.m(), args.problem_size.n());
-    result = AllocateMatrix(&D[0], GemmKernel::kThreadCount * grid_shape.n() * grid_shape.m(), inst_shape);
+      // schedule multiple kernel calls on the same stream
+      // compute the number of row blocks per each kernel. This value is obtained under the hypothesis that we have to avoid
+      // as much as possible to divide over the columns, since it requires refactoring the matrix to keep the row major layout.
+      int row_blocks_no = floor(((float)SM_no) / (grid.y * 3));
 
-    std::cout << "D[0] data: " << D[0] << "\n";
+      if (row_blocks_no == 0)
+        row_blocks_no = 1;
+
+      if (row_blocks_no > grid.x)
+        row_blocks_no = grid.x;
+
+      // compute the number of columns blocks per each kernel
+      int column_blocks_no = grid.y / ceil(((float)grid.y) / (((float)SM_no) / 3));
+
+      // print some messages to inform the user about the need to divide execution in multiple kernels
+      std::cout << "number of blocks: " << (grid.x * grid.y * grid.z) << " vs number of SM: " << SM_no << "\n";
+
+      // allocate matrices on the device to host B/C/D submatrices,
+      result = AllocateMatrix(&B_sub, GemmKernel::kThreadCount * args.problem_size.k() * column_blocks_no, inst_shape);
+
+      if(result != cudaSuccess){
+        return Status::kErrorInternal;
+      }
+
+      result = AllocateMatrix(&C_sub, GemmKernel::kThreadCount * column_blocks_no * row_blocks_no, inst_shape);
     
-    if(result != cudaSuccess){
-      return Status::kErrorInternal;
+      if(result != cudaSuccess){
+        return Status::kErrorInternal;
+      }
+
+      result = AllocateMatrix(&D_sub, GemmKernel::kThreadCount * column_blocks_no * row_blocks_no, inst_shape);
+    
+      if(result != cudaSuccess){
+        return Status::kErrorInternal;
+      }
+
+      // allocate matrices on the host, to retrieve the results (only host_D[0] is actually needed)
+      // std::cout << "host_D size: " << GemmKernel::kThreadCount * column_blocks_no * row_blocks_no * GemmKernel::kThreadCount << "\n";
+      for (int i = 0; i< TMR; i++)
+        // host_D[i] = (float *)malloc(args.problem_size.m()*args.problem_size.n()*sizeof(float));
+        host_D[i] = (float *)malloc(args.problem_size.m() * args.problem_size.n() * sizeof(float));
+
+      // result = AllocateMatrix(&D[0], args.problem_size.m(), args.problem_size.n());
+      result = AllocateMatrix(&D[0], GemmKernel::kThreadCount * column_blocks_no * row_blocks_no, inst_shape);
+
+      std::cout << "D[0] data: " << D[0] << "\n";
+      
+      if(result != cudaSuccess){
+        return Status::kErrorInternal;
+      }
+
+      std::cout << "D[1] address: " << &D[1] << "\n";
+      // result = AllocateMatrix(&D[1], args.problem_size.m(), args.problem_size.n());
+      result = AllocateMatrix(&D[1], GemmKernel::kThreadCount * column_blocks_no * row_blocks_no, inst_shape);
+      
+      if(result != cudaSuccess){
+        cudaFree(D[0]);
+        return Status::kErrorInternal;
+      }
+
+      // iterate on the column blocks
+      for (int i = 0; i < grid.y / column_blocks_no; i++){
+
+        // populate B submatrix
+        for (int k = 0; k < args.problem_size.k(); k++){
+          // if (k % 100 == 0) std::cout << "B " << k << "th index: " << k * args.problem_size.n() + i * column_blocks_no * GemmKernel::kThreadCount << "\n";
+          cudaMemcpy(B_sub + k * column_blocks_no * GemmKernel::kThreadCount, args.ref_B.non_const_ref().data() + k * args.problem_size.n() + i * column_blocks_no * GemmKernel::kThreadCount, GemmKernel::kThreadCount * column_blocks_no * sizeof(float), cudaMemcpyDeviceToDevice);
+        }
+
+        for (int j = 0; j < grid.x / (3 * row_blocks_no); j++){
+
+          // populate C submatrix
+          // k1 is the index which keeps count of the number of blocks on the rows
+          for (int k1 = 0; k1 < row_blocks_no; k1++) {
+              // k2 is the index which keeps count of the line inside the currently selected block k1
+              for (int k2 = 0; k2 < GemmKernel::kThreadCount; k2++){
+                if (k2 % 127 == 0) std::cout << "C " << k2 << "th index: " << i * GemmKernel::kThreadCount * column_blocks_no + j * GemmKernel::kThreadCount * args.problem_size.n() * row_blocks_no + k1 * GemmKernel::kThreadCount * args.problem_size.n() + k2 * args.problem_size.n() << "\n";
+                cudaMemcpy(C_sub + k1 * column_blocks_no * GemmKernel::kThreadCount * GemmKernel::kThreadCount + k2 * column_blocks_no * GemmKernel::kThreadCount, args.ref_C.data() + i * GemmKernel::kThreadCount * column_blocks_no + j * GemmKernel::kThreadCount * args.problem_size.n() * row_blocks_no + k1 * GemmKernel::kThreadCount * args.problem_size.n() + k2 * args.problem_size.n(), GemmKernel::kThreadCount * column_blocks_no * sizeof(float), cudaMemcpyDeviceToDevice);
+              }
+          }
+          // override args value with the new matrix dimension
+          arg_int = Arguments({GemmKernel::kThreadCount * row_blocks_no, GemmKernel::kThreadCount * column_blocks_no , args.problem_size.k()},  // Gemm Problem dimensions
+              {&args.ref_A.const_ref().data()[j * args.problem_size.k() * row_blocks_no * GemmKernel::kThreadCount],args.problem_size.k()},    // Tensor-ref for source matrix A
+              {B_sub,column_blocks_no * GemmKernel::kThreadCount},    // Tensor-ref for source matrix B
+              {C_sub,column_blocks_no * GemmKernel::kThreadCount},    // Tensor-ref for source matrix C
+              {D_sub, column_blocks_no * GemmKernel::kThreadCount},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+              {1,1}); // TODO: FIND A WAY TO RETRIEVE ALPHA AND BETA
+
+          // launch the initialization phase and the kernel itself
+          status = initialize(arg_int, D, workspace, stream);
+      
+          if (status == Status::kSuccess) {
+            status = run(stream);
+          }
+
+          // copy back the D submatrix in the corresponding location inside D
+          for (int k1 = 0; k1 < row_blocks_no; k1++){
+              // k2 is the index which keeps count of the line inside the currently selected block k1
+              for (int k2 = 0; k2 < GemmKernel::kThreadCount; k2++){
+                if (k2 % 127 == 0) std::cout << "D " << k2 << "th index: " << i * GemmKernel::kThreadCount * column_blocks_no + j * GemmKernel::kThreadCount * args.problem_size.n() * row_blocks_no + k1 * GemmKernel::kThreadCount * args.problem_size.n() + k2 * args.problem_size.n() << "\n";
+                cudaMemcpy(args.ref_D.data() + i * GemmKernel::kThreadCount * column_blocks_no + j * GemmKernel::kThreadCount * args.problem_size.n() * row_blocks_no + k1 * GemmKernel::kThreadCount * args.problem_size.n() + k2 * args.problem_size.n(), D_sub + k1 * column_blocks_no * GemmKernel::kThreadCount * GemmKernel::kThreadCount + k2 * column_blocks_no * GemmKernel::kThreadCount, GemmKernel::kThreadCount * column_blocks_no * sizeof(float), cudaMemcpyDeviceToDevice);
+              }
+          }
+        }
+
+      }
+    } else {
+
+      for (int i = 0; i< TMR; i++)
+        // host_D[i] = (float *)malloc(args.problem_size.m()*args.problem_size.n()*sizeof(float));
+        host_D[i] = (float *)malloc(args.problem_size.m() * args.problem_size.n() * sizeof(float));
+      
+      // result = AllocateMatrix(&D[0], args.problem_size.m(), args.problem_size.n());
+      result = AllocateMatrix(&D[0], GemmKernel::kThreadCount * grid_shape.n() * grid_shape.m(), inst_shape);
+
+      std::cout << "D[0] data: " << D[0] << "\n";
+      
+      if(result != cudaSuccess){
+        return Status::kErrorInternal;
+      }
+
+      std::cout << "D[1] address: " << &D[1] << "\n";
+      // result = AllocateMatrix(&D[1], args.problem_size.m(), args.problem_size.n());
+      result = AllocateMatrix(&D[1], GemmKernel::kThreadCount * grid_shape.n() * grid_shape.m(), inst_shape);
+      
+      if(result != cudaSuccess){
+        cudaFree(D[0]);
+        return Status::kErrorInternal;
+      }
+
+      // single kernel launch
+      status = initialize(args, D, workspace, stream);
+    
+      if (status == Status::kSuccess) {
+        status = run(stream);
+      }
     }
 
-    std::cout << "D[1] address: " << &D[1] << "\n";
-    // result = AllocateMatrix(&D[1], args.problem_size.m(), args.problem_size.n());
-    result = AllocateMatrix(&D[1], GemmKernel::kThreadCount * grid_shape.n() * grid_shape.m(), inst_shape);
-    
-    if(result != cudaSuccess){
-      cudaFree(D[0]);
-      return Status::kErrorInternal;
-    }
-    Status status = initialize(args, D, workspace, stream);
-    
-    if (status == Status::kSuccess) {
-      status = run(stream);
-    }
-
+    std::cout << "done\n";
     // cudaMemcpy(host_D[0], args.ref_D.data(), args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
     cudaMemcpy(host_D[0], args.ref_D.data(), args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(host_D[1], D[0], inst_shape * GemmKernel::kThreadCount * grid_shape.n() * grid_shape.m() * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(host_D[2], D[1], inst_shape * GemmKernel::kThreadCount * grid_shape.n() * grid_shape.m() * sizeof(float), cudaMemcpyDeviceToHost);
+    // cudaMemcpy(host_D[1], D[0], inst_shape * GemmKernel::kThreadCount * grid_shape.n() * grid_shape.m() * sizeof(float), cudaMemcpyDeviceToHost);
+    // cudaMemcpy(host_D[2], D[1], inst_shape * GemmKernel::kThreadCount * grid_shape.n() * grid_shape.m() * sizeof(float), cudaMemcpyDeviceToHost);
 
-    std::cout << "D[0]:\n";
-    for (int cnt = 0; cnt < args.problem_size.m() * args.problem_size.n(); cnt++){
-      std::cout << host_D[0][cnt] << ' ';
-      if(cnt % args.problem_size.m() == args.problem_size.m() - 1)
-        std::cout << "\n";
-    }
-    std::cout << "\n";
+    // std::cout << "D[0]:\n";
+    // for (int cnt = 0; cnt < args.problem_size.m() * args.problem_size.n(); cnt++){
+    //   // if(cnt / args.problem_size.n() == 32)
+    //   //   break;
+    //   // if (cnt % args.problem_size.n() < 32)
+    //     std::cout << host_D[0][cnt] << ' ';
+    //   // if(cnt % args.problem_size.n() == 32)
+    //   if(cnt % args.problem_size.n() == args.problem_size.n() - 1)
+    //     std::cout << "\n";
+    // }
+    // std::cout << "\n";
     // std::cout << "D[1]:\n";
     // for (int cnt = 0; cnt < inst_shape * GemmKernel::kThreadCount * grid_shape.n() * grid_shape.m(); cnt++){
     //   std::cout << host_D[1][cnt] << ' ';
