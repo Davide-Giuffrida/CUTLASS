@@ -337,6 +337,7 @@ public:
       // Loop over GEMM K dimension
       //
 
+      // TODO: move correction at the end of each outer loop iteration
       // reset the accumulators to the values of the one that was found to be correct during last check
       for (int i = 0; i < int(accum.kStorageElements); ++i) {
         if (tocopy != 0) accum_array[0].data()[i] = accum_array[tocopy].data()[i];
@@ -450,6 +451,7 @@ public:
       // }
       
       // compare the three results to check if they are the same
+      // TODO: revise to properly compare the matrices (check if they are different)
       for (int i = 0; i < int(accum.kStorageElements); ++i) {
         if(accum_array[0].raw_data()[i] == accum_array[1].raw_data()[i]){
           // if they are the same then you can assign their value to the actual accum, which will be returned by the function
