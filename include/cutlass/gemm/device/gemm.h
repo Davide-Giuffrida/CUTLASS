@@ -831,8 +831,8 @@ public:
       std::cout << "params.ref_D: " << params_.ref_D.data() << "\n";
       if (status[i] == Status::kSuccess) {
         std:: cout << "running instance " << i << "\n";
-        //status[i] = run(streams[i]);
-        status[i] = run(stream);
+        status[i] = run(streams[i]);
+        // status[i] = run(stream);
       }
       if (status[i] != Status::kSuccess) {
         return Status::kErrorInternal;
@@ -871,7 +871,7 @@ public:
     
     // redefine grid and block size
     dim3 grid = threadblock_swizzle.get_grid_shape(params_.grid_tiled_shape);
-    dim3 block(GemmKernel::kThreadCount, 1, 1);
+    dim3 block(GemmKernel::kThreadCount, 1, 1); // TODO: adjust grid size to launch a number of threads equal to the number of elems
     dim3 block_reduce(args.problem_size.m()*args.problem_size.n()/2, 1, 1);
 
     std::cout << "block size: " << GemmKernel::kThreadCount << "\n";
@@ -930,12 +930,12 @@ public:
     std:: cout << "after odd size handling \n";
 
     // actual checks
-    if(*host_tmp[0] == *host_tmp[1]){
+    if(*host_tmp[0] == args.problem_size.m()*args.problem_size.n()){
       res = 0; // or 1, it's the same
-    }else if(*host_tmp[1] == *host_tmp[2]){
-      res = 1; // or 1, it's the same
-    }else if(*host_tmp[0] == *host_tmp[2]){
-      res = 0; // or 1, it's the same
+    }else if(*host_tmp[1] == args.problem_size.m()*args.problem_size.n()){
+      res = 1; // or 2, it's the same
+    }else if(*host_tmp[2] == args.problem_size.m()*args.problem_size.n()){
+      res = 0; // or 2, it's the same
     }
     if(res == 10){
       return Status::kRedundancyError;
