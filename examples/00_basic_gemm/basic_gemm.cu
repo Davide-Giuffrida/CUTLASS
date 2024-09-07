@@ -560,7 +560,7 @@ int main(int argc, const char *arg[]) {
   // define a handler for sigint to clear cuda context before quitting
   signal(SIGINT, sigintHandler);
   // GEMM problem dimensions.
-  int problem[3] = { 128, 128, 128 };
+  int problem[3] = { 512, 512, 512 };
   //int problem[3] = { 4, 4, 4 };
 
   for (int i = 1; i < argc && i < 4; ++i) {
