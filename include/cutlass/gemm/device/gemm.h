@@ -798,7 +798,7 @@ public:
       cudaDeviceSynchronize();
       // call the reduction kernels
       for (int i = 0; i < TMR; i++)
-        ReduceMatrix_kernel<<<grid_reduce,block_reduce,0,streams[0]>>>(tmp[i],args.problem_size.m()*args.problem_size.n());
+        ReduceMatrix_kernel<<<grid_reduce,block_reduce,0,streams[i]>>>(tmp[i],args.problem_size.m()*args.problem_size.n());
       // wait for the reduction kernels to finish
       cudaDeviceSynchronize();
       // copy the results to the host 
@@ -817,6 +817,7 @@ public:
           *host_D[i] = *host_D[i] + *(host_D[i] + args.problem_size.m()*args.problem_size.n() - 1);
       }
       // actual checks
+      // TODO: FIX IT TO COMPARE EACH VALUE WITH THE NUMBER OF ELEMENTS
       if(*host_D[0] == *host_D[1]){
         res = 0; // or 1, it's the same
       }else if(*host_D[1] == *host_D[2]){
@@ -828,6 +829,7 @@ public:
         std::cout << "ciaooo\n";
         return Status::kRedundancyError;
       }
+      // TODO: MARK AS CORRECT BOTH THE MATRICES WHICH HAVE BEEN FOUND TO BE EQUAL, SO THAT YOU CAN AVOID A COPY OPERATION
       // copy the intermediate result in the other device matrices, since their results may be incorrect
       for (int i = 0; i < TMR; i++)
         if (i != res)
