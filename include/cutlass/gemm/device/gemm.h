@@ -839,24 +839,17 @@ public:
     std:: cout << "passed sync point \n";
 
     // check results
-    cudaMemcpy(host_D[0], D[0], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(host_D[1], D[1], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(host_D[2], D[2], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
+    // cudaMemcpy(host_D[0], D[0], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
+    // cudaMemcpy(host_D[1], D[1], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
+    // cudaMemcpy(host_D[2], D[2], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
 
-    std:: cout << "D[0] address: " << host_D[0] << "\n";
-    for(int i = 0; i< args.problem_size.m()*args.problem_size.n(); i++)
-      std:: cout << host_D[0][i] << " ";
-    std:: cout << "\n";
+    // configurable fault injection: change the index of the array where the fault is injected to customize it
+    //*(host_D[0] + 2) = *(host_D[0] + 2) + 1;
+    //*(host_D[1] + 2) = *(host_D[1] + 2) + 1;
 
-    std:: cout << "D[1] address: " << host_D[1] << "\n";
-    for(int i = 0; i< args.problem_size.m()*args.problem_size.n(); i++)
-      std:: cout << host_D[1][i] << " ";
-    std:: cout << "\n";
-
-    std:: cout << "D[2] address: " << host_D[2] << "\n";
-    for(int i = 0; i< args.problem_size.m()*args.problem_size.n(); i++)
-      std:: cout << host_D[2][i] << " ";
-    std:: cout << "\n";
+    // cudaMemcpy(D[0], host_D[0], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyHostToDevice);
+    // cudaMemcpy(D[1], host_D[1], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyHostToDevice);
+    // cudaMemcpy(D[2], host_D[2], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyHostToDevice);
 
     // Operation results check
     ThreadblockSwizzle threadblock_swizzle;
