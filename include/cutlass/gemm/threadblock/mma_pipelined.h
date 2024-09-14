@@ -339,11 +339,11 @@ public:
 
       // TODO: move correction at the end of each outer loop iteration
       // reset the accumulators to the values of the one that was found to be correct during last check
-      for (int i = 0; i < int(accum.kStorageElements); ++i) {
-        if (tocopy != 0) accum_array[0].data()[i] = accum_array[tocopy].data()[i];
-        if (tocopy != 1) accum_array[1].data()[i] = accum_array[tocopy].data()[i];
-        if (tocopy != 2) accum_array[2].data()[i] = accum_array[tocopy].data()[i];
-      }
+      // for (int i = 0; i < int(accum.kStorageElements); ++i) {
+      //   if (tocopy != 0) accum_array[0].data()[i] = accum_array[tocopy].data()[i];
+      //   if (tocopy != 1) accum_array[1].data()[i] = accum_array[tocopy].data()[i];
+      //   if (tocopy != 2) accum_array[2].data()[i] = accum_array[tocopy].data()[i];
+      // }
 
       //for (int iter = 0; iter < 3; iter++){
 
@@ -466,7 +466,10 @@ public:
           // find a way to propagate an error and return it as an output of the cuda call
         }
         // perform the actual copy operation
-        accum.raw_data()[i] = accum_array[tocopy].raw_data()[i];
+        accum.data()[i] = accum_array[tocopy].data()[i];
+        if (tocopy != 0) accum_array[0].data()[i] = accum_array[tocopy].data()[i];
+        if (tocopy != 1) accum_array[1].data()[i] = accum_array[tocopy].data()[i];
+        if (tocopy != 2) accum_array[2].data()[i] = accum_array[tocopy].data()[i];
       }
     }
 
