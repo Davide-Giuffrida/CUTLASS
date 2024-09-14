@@ -93,23 +93,21 @@ namespace device {
   // Maximum matrix elements supported: 2^32
   __global__ void ReduceMatrix_kernel(
     float *matrix,
-    int   elements
+    int   elements,
+    int i
   )
   {
-    for (int i=0; i < int(log2(elements)); i++){
-    //for (int i=0; i < 2; i++){
       int ja = threadIdx.x * 2 + blockIdx.x * blockDim.x * 2;
-      if(ja < elements){
-        if(ja + i + pow(2,i) < elements){
-          matrix[ja] = matrix[ja] + matrix[ja + int(pow(2,i))];
-        }
-      }
-      // delete all threads that are not needed anymore
-      if((ja + int(pow(2,i + 1))) % int(pow(2,i + 2)) == 0){
+      if (i != 0 && (ja % ((int)pow(2,i + 1))) != 0 && ja != 0 && ja != (int)pow(2,i + 1))
         return;
-      }
-      __syncthreads();
-    }
+      // delete all threads that are not needed anymore
+      // if((ja + int(pow(2,i + 1))) % int(pow(2,i + 2)) != 0){
+        if(ja < elements){
+          if(ja + pow(2,i) < elements){
+            matrix[ja] = matrix[ja] + matrix[ja + int(pow(2,i))];
+          }
+        }
+      // }
   }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -686,6 +684,8 @@ public:
     ThreadblockSwizzle threadblock_swizzle;
     dim3 grid,grid_reduce,block,block_reduce;
 
+    setbuf(stdout, 0);
+
     // copy args in args_int
     for (int i = 0; i < TMR; i++){
       args_int[i] = args;
@@ -797,13 +797,19 @@ public:
       // wait for the comparison kernels to finish
       cudaDeviceSynchronize();
       // call the reduction kernels
-      for (int i = 0; i < TMR; i++)
-        ReduceMatrix_kernel<<<grid_reduce,block_reduce,0,streams[i]>>>(tmp[i],args.problem_size.m()*args.problem_size.n());
+      // for (int i = 0; i < TMR; i++)
+      //  for (int j = 0; j < log2(args.problem_size.m()*args.problem_size.n()); j++){
+      //    ReduceMatrix_kernel<<<grid_reduce,block_reduce,0,streams[i]>>>(tmp[i],args.problem_size.m()*args.problem_size.n(), j);
+      //  }
       // wait for the reduction kernels to finish
       cudaDeviceSynchronize();
       // copy the results to the host 
       for (int i = 0; i < TMR; i++)
         cudaMemcpy(host_D[i], tmp[i], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
+      
+      for (int i = 0; i < TMR; i++)
+        for (int j = 1; j < args.problem_size.m() * args.problem_size.n(); j++)
+          *host_D[i] = *(host_D[i] + j) + *(host_D[i]);
       // cnt = 0;
       // for (; cnt < args.problem_size.m() * args.problem_size.n(); cnt++){
       //   std::cout << host_D[0][cnt] << ' ';
@@ -817,12 +823,13 @@ public:
           *host_D[i] = *host_D[i] + *(host_D[i] + args.problem_size.m()*args.problem_size.n() - 1);
       }
       // actual checks
+      std::cout << "result hosts: " << *host_D[0] << ", " << *host_D[1] << ", " << *host_D[2] << "\n";
       // TODO: FIX IT TO COMPARE EACH VALUE WITH THE NUMBER OF ELEMENTS
-      if(*host_D[0] == *host_D[1]){
+      if(*host_D[0] == args.problem_size.m()*args.problem_size.n()){
         res = 0; // or 1, it's the same
-      }else if(*host_D[1] == *host_D[2]){
+      }else if(*host_D[1] == args.problem_size.m()*args.problem_size.n()){
         res = 1; // or 2, it's the same
-      }else if(*host_D[0] == *host_D[2]){
+      }else if(*host_D[0] == args.problem_size.m()*args.problem_size.n()){
         res = 0; // or 2, it's the same
       }
       if(res == 10){
