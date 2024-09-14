@@ -317,15 +317,6 @@ public:
     iterator_A.clear_mask(gemm_k_iterations <= 1);
     iterator_B.clear_mask(gemm_k_iterations <= 1);
 
-    // declare additional accumulators to store the results of the three iterations
-    FragmentC accum_array[3];
-
-    // declare helper variables
-    int tocopy = 0;
-    accum_array[0].clear();
-    accum_array[1].clear();
-    accum_array[2].clear();
-
     //
     // Mainloop
     //
@@ -336,16 +327,6 @@ public:
       //
       // Loop over GEMM K dimension
       //
-
-      // TODO: move correction at the end of each outer loop iteration
-      // reset the accumulators to the values of the one that was found to be correct during last check
-      // for (int i = 0; i < int(accum.kStorageElements); ++i) {
-      //   if (tocopy != 0) accum_array[0].data()[i] = accum_array[tocopy].data()[i];
-      //   if (tocopy != 1) accum_array[1].data()[i] = accum_array[tocopy].data()[i];
-      //   if (tocopy != 2) accum_array[2].data()[i] = accum_array[tocopy].data()[i];
-      // }
-
-      //for (int iter = 0; iter < 3; iter++){
 
         CUTLASS_PRAGMA_UNROLL
         for (int warp_mma_k = 0; warp_mma_k < Base::kWarpGemmIterations; ++warp_mma_k) {
@@ -402,75 +383,11 @@ public:
           }
 
           warp_mma(
-            // accum_array[iter],
-            accum_array[0],
+            accum,
             warp_frag_A[warp_mma_k % 2],
             warp_frag_B[warp_mma_k % 2],
-            // accum);
-            accum_array[0]);
-          
-          warp_mma(
-            // accum_array[iter],
-            accum_array[1],
-            warp_frag_A[warp_mma_k % 2],
-            warp_frag_B[warp_mma_k % 2],
-            // accum);
-            accum_array[1]);
-
-          warp_mma(
-            // accum_array[iter],
-            accum_array[2],
-            warp_frag_A[warp_mma_k % 2],
-            warp_frag_B[warp_mma_k % 2],
-            // accum);
-            accum_array[2]);
+            accum);
         }
-
-        // resume the old values for the warp_tile_iterators
-        // for (int warp_mma_k = Base::kWarpGemmIterations - 1; warp_mma_k >= 0; --warp_mma_k) {
-        //   --this->warp_tile_iterator_A_;
-        //   --this->warp_tile_iterator_B_;
-        //   this->warp_tile_iterator_A_.set_kgroup_index((warp_mma_k) % Base::kWarpGemmIterations);
-        //   this->warp_tile_iterator_B_.set_kgroup_index((warp_mma_k) % Base::kWarpGemmIterations);
-        // }
-        // // an additional decrease to point to the original fragments
-        // --this->warp_tile_iterator_A_;
-        // --this->warp_tile_iterator_B_;
-        // 
-        // // reload fragments 0 (they are needed for the first iteration, since they are computed outside the outer loop at the beginning)
-        // this->warp_tile_iterator_A_.load(warp_frag_A[0]);
-        // this->warp_tile_iterator_B_.load(warp_frag_B[0]);
-        // // re-increase the iterators, to make them point to the fragment 1 that will be fetched during the first iteration of the inner loop
-        // ++this->warp_tile_iterator_A_;
-        // ++this->warp_tile_iterator_B_;
-
-      //}
-
-      // for (int i = 0; i < int(accum.kStorageElements); ++i) {
-      //   accum.raw_data()[i] = accum_array[2].raw_data()[i];
-      // }
-      
-      // compare the three results to check if they are the same
-      // TODO: revise to properly compare the matrices (check if they are different)
-      for (int i = 0; i < int(accum.kStorageElements); ++i) {
-        if(accum_array[0].raw_data()[i] == accum_array[1].raw_data()[i]){
-          // if they are the same then you can assign their value to the actual accum, which will be returned by the function
-          // you have to copy the array values one by one, because the accum_array is declared inside this method (it could be deallocated when you leave)
-          tocopy = 0;
-        } else if (accum_array[0].raw_data()[i] == accum_array[2].raw_data()[i]){
-          // the same as before, copy the first array into the destination accumulator
-          tocopy = 0;
-        } else if (accum_array[1].raw_data()[i] == accum_array[2].raw_data()[i]){
-          tocopy = 1;
-        } else {
-          // find a way to propagate an error and return it as an output of the cuda call
-        }
-        // perform the actual copy operation
-        accum.data()[i] = accum_array[tocopy].data()[i];
-        if (tocopy != 0) accum_array[0].data()[i] = accum_array[tocopy].data()[i];
-        if (tocopy != 1) accum_array[1].data()[i] = accum_array[tocopy].data()[i];
-        if (tocopy != 2) accum_array[2].data()[i] = accum_array[tocopy].data()[i];
-      }
     }
 
   }

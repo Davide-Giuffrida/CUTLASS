@@ -684,15 +684,7 @@ public:
             //{args.epilogue.alpha_ptr, args.epilogue.beta_ptr}); // Scalars used in the Epilogue
 
     */
-    Status status = initialize(args, workspace, stream);
-    
-    if (status == Status::kSuccess) {
-      status = run(stream);
-    }
 
-    return status;
-
-    /*
     float* D[TMR]; // Additional matrices for TMR (DEV)
     float* host_D[TMR]; // as before, but on the host (HOST)
     float* tmp[TMR]; // temporary matrices for storing the results of comparisons between matrix 1-2, 2-3 and 1-3 (DEV)
@@ -870,9 +862,22 @@ public:
     ThreadblockSwizzle threadblock_swizzle;
     
     // redefine grid and block size
-    dim3 grid = threadblock_swizzle.get_grid_shape(params_.grid_tiled_shape);
-    dim3 block(GemmKernel::kThreadCount, 1, 1); // TODO: adjust grid size to launch a number of threads equal to the number of elems
-    dim3 block_reduce(args.problem_size.m()*args.problem_size.n()/2, 1, 1);
+    // define dim3 parameters
+    dim3 grid,grid_reduce,block,block_reduce;
+    if (args.problem_size.m()*args.problem_size.n() >= 512){
+      grid = dim3((int)ceil(args.problem_size.m()*args.problem_size.n()/512),1,1);
+      block = dim3(512, 1, 1); // 512 maximum block size (in terms of number of threads)
+    } else {
+      grid = dim3(1,1,1);
+      block = dim3(args.problem_size.m()*args.problem_size.n(), 1, 1); // 512 maximum block size (in terms of number of threads)
+    }
+    if (args.problem_size.m()*args.problem_size.n() >= 1024){
+      grid_reduce = dim3((int)ceil(args.problem_size.m()*args.problem_size.n()/1024),1,1);
+      block_reduce = dim3(512, 1, 1);
+    } else {
+      grid_reduce = dim3(1,1,1);
+      block_reduce = dim3(args.problem_size.m()*args.problem_size.n()/2, 1, 1); // 512 maximum block size (in terms of number of threads)
+    }
 
     std::cout << "block size: " << GemmKernel::kThreadCount << "\n";
     std::cout << "grid size: " << grid << "\n";
@@ -897,22 +902,16 @@ public:
       std:: cout << host_tmp[0][i] << " ";
     std:: cout << "\n";
 
-    ReduceMatrix_kernel<<<grid,block_reduce,0,streams[0]>>>(tmp[0],args.problem_size.m()*args.problem_size.n());
-    ReduceMatrix_kernel<<<grid,block_reduce,0,streams[1]>>>(tmp[1],args.problem_size.m()*args.problem_size.n());
-    ReduceMatrix_kernel<<<grid,block_reduce,0,streams[2]>>>(tmp[2],args.problem_size.m()*args.problem_size.n());
+    for (int i = 0; i < TMR; i++)
+        for (int j = 1; j < args.problem_size.m() * args.problem_size.n(); j++)
+          *host_tmp[i] = *(host_tmp[i] + j) + *(host_tmp[i]);
 
     std:: cout << "after compare and reduction\n";
 
-    cudaDeviceSynchronize();
-    
-    std:: cout << "after second sync \n";
-
     // copy tmp matrices in host_tmp matrices
-    cudaMemcpy(host_tmp[0], tmp[0], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(host_tmp[1], tmp[1], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(host_tmp[2], tmp[2], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
-
-    cudaDeviceSynchronize();
+    // cudaMemcpy(host_tmp[0], tmp[0], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
+    // cudaMemcpy(host_tmp[1], tmp[1], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
+    // cudaMemcpy(host_tmp[2], tmp[2], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
 
     std:: cout << "tmp address: " << host_tmp[0] << "\n";
     for(int i = 0; i< args.problem_size.m()*args.problem_size.n(); i++)
@@ -967,7 +966,6 @@ public:
       free(host_tmp[i]);
 
     return Status::kSuccess;
-    */
   }
 };
 
