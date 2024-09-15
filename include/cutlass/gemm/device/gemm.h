@@ -73,45 +73,6 @@ namespace device {
     }
   }
 
-  // TODO: THE KERNEL DOESN'T WORK PROPERLY, UPDATE IT TO COVER CASES IN WHICH THE NUMBER OF THREADS IS LOWER THAN THE NUMBER OF ELEMENTS IN THE MATRIX
-  /// Kernel to check matrices equivalence.
-  __global__ void CompareMatrix_kernel(
-    float *dstMatrix,
-    float *srcMatrixA,
-    float *srcMatrixB,
-    int elements) {
-
-    int i = threadIdx.x + blockIdx.x * blockDim.x;
-    if(i < elements){
-      // TODO: TRY TO REMOVE THE CONDITIONAL STATEMENT
-      dstMatrix[i] = (srcMatrixA[i] == srcMatrixB[i])? 1:0;
-    }
-  }
-
-
-  /// Kernel to reduce matrix to one element
-  // Maximum matrix elements supported: 2^32
-  __global__ void ReduceMatrix_kernel(
-    float *matrix,
-    int   elements
-  )
-  {
-    for (int i=0; i < int(log2(elements)); i++){
-    //for (int i=0; i < 2; i++){
-      int ja = threadIdx.x * 2 + blockIdx.x * blockDim.x * 2;
-      if(ja < elements){
-        if(ja + i + pow(2,i) < elements){
-          matrix[ja] = matrix[ja] + matrix[ja + int(pow(2,i))];
-        }
-      }
-      // delete all threads that are not needed anymore
-      if((ja + int(pow(2,i + 1))) % int(pow(2,i + 2)) == 0){
-        return;
-      }
-      __syncthreads();
-    }
-  }
-
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*! Gemm device-level operator. This is an interface to efficient CUTLASS GEMM kernels that may
