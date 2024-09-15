@@ -360,11 +360,9 @@ public:
       ++this->warp_tile_iterator_B_;
 
       warp_mma(
-        // accum_array[iter],
         accum,
         warp_frag_A[warp_mma_k % 2],
         warp_frag_B[warp_mma_k % 2],
-        // accum);
         accum);
     }
 
