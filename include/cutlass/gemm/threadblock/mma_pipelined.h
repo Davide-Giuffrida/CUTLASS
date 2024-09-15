@@ -454,15 +454,21 @@ public:
           // adjust master
           for (int i = 0; i < accum.kStorageElements; i++)
             accum.data()[i] = D2[index * accum.kStorageElements + i];
+        
+        // configurable fault injection
+        // for (int i = 0; i < accum.kStorageElements; i++)
+        //     D2[index * accum.kStorageElements + i] = accum.data()[i] + 1;
+        // for (int i = 0; i < accum.kStorageElements; i++)
+        //     D1[index * accum.kStorageElements + i] = accum.data()[i] + 1;
       }
       // synchronization point to force the non master threads to wait for the master
       // TODO: ...
       cg::sync(grid);
 
       // load the new results back in the local accumulators
-      // if (!is_master)
-      //   for (int i = 0; i < accum.kStorageElements; i++)
-      //     accum.data()[i] = destination[index * accum.kStorageElements + i];
+      if (!is_master)
+        for (int i = 0; i < accum.kStorageElements; i++)
+          accum.data()[i] = destination[index * accum.kStorageElements + i];
       
     }
 
