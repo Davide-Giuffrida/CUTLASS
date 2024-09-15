@@ -428,17 +428,8 @@ public:
 
     size_t sizeof_matrix = sizeof(float) * rows * columns;
 
-    std::cout << "matrix before allocation: " << *matrix << "\n";
-    std::cout << "matrix size: " << sizeof_matrix << "\n";
-
     // Allocate device memory.
     result = cudaMalloc(reinterpret_cast<void **>(matrix), sizeof_matrix);
-
-    std::cout << "newly allocated matrix: " << *matrix << "\n";
-
-    /*if (result != cudaSuccess) {
-      return result;
-    }*/
 
     // Clear the allocation.
     result = cudaMemset(*matrix, 0, sizeof_matrix);
@@ -449,15 +440,6 @@ public:
       return result;
     }
 
-    // Initialize matrix elements to arbitrary small integers.
-    /*result = InitializeMatrix(*matrix, rows, columns, seed);
-
-    if (result != cudaSuccess) {
-      std::cerr << "Failed to initialize matrix: "
-        << cudaGetErrorString(result) << std::endl;
-      return result;
-    }*/
-
     return result;
   }
 
@@ -465,14 +447,7 @@ public:
   cudaError_t CopyMatrix(float *dstMatrix,float* srcMatrix, int rows, int columns, cudaStream_t stream = nullptr) {
     cudaError_t result;
     ThreadblockSwizzle threadblock_swizzle;
-  
-    // Allocate dst matrix
-    //result = AllocateMatrix(dstMatrix,rows,columns);
-
-    /*if (result !=  cudaSuccess) {
-      return result;
-    }
-    */
+    
     dim3 grid = threadblock_swizzle.get_grid_shape(params_.grid_tiled_shape);
     dim3 block(GemmKernel::kThreadCount, 1, 1);
 
@@ -566,8 +541,6 @@ public:
       }
     }
 
-    std::cout << "ref_C: " << args.ref_C.data() << "\n";
-
     // Initialize the Params structure
     params_ = typename GemmKernel::Params{
       args.problem_size,
@@ -639,8 +612,6 @@ public:
     dim3 block(GemmKernel::kThreadCount, 1, 1);
 
     cudaError_t result;
-
-    std::cout << "grid size: " << grid << "\n";
     
     // this is a characteristic of the specific CUDA architecture
     int smem_size = int(sizeof(typename GemmKernel::SharedStorage));
@@ -686,22 +657,6 @@ public:
     void *workspace = nullptr, 
     cudaStream_t stream = nullptr) {
 
-    std::cout << "thread count: " << GemmKernel::kThreadCount << "\n";
-    /*
-
-    std::cout << "alpha: " << args.epilogue.alpha_ptr << ", beta: " << args.epilogue.beta_ptr << "\n";
-
-    Arguments const args1({args.problem_size.m(), args.problem_size.n(), args.problem_size.k()},  // Gemm Problem dimensions
-            {args.ref_A.const_ref().data(),args.problem_size.m()},    // Tensor-ref for source matrix A
-            {args.ref_B.const_ref().data(),args.problem_size.k()},    // Tensor-ref for source matrix B
-            {args.ref_C.data(),args.problem_size.m()},    // Tensor-ref for source matrix C
-            //{D[i], args.problem_size.m()},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
-            {args.ref_D.data(),args.problem_size.m()},
-            //{args.ref_D.data(), args.ref_D.layout()},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
-            {1,0});
-            //{args.epilogue.alpha_ptr, args.epilogue.beta_ptr}); // Scalars used in the Epilogue
-
-    */
     float* D[TMR]; // Additional matrices for TMR (DEV)
     float* B_sub;
     float* C_sub;
@@ -718,7 +673,6 @@ public:
     // retrieve the number of SMs
     cudaGetDeviceProperties(&deviceProp, 0);
     SM_no = deviceProp.multiProcessorCount;
-    // SM_no = 0;
 
     int inst_shape = InstructionShape::kM * InstructionShape::kN;
 
@@ -729,10 +683,6 @@ public:
 
     // define the grid for the problem
     dim3 grid = threadblock_swizzle.get_grid_shape(grid_shape);
-
-    std::cout << "instruction shape: " << inst_shape << "\n";
-    std::cout << "grid size: " << grid << "\n";
-    std::cout << "grid_tiled_shape: " << grid_shape << "\n";
 
     // check if the matrix is too big for a cooperative launch
     if (grid.x * grid.y * grid.z > SM_no) {
@@ -753,9 +703,6 @@ public:
 
       if (column_blocks_no > 8)
         column_blocks_no = 8;
-
-      // print some messages to inform the user about the need to divide execution in multiple kernels
-      std::cout << "number of blocks: " << (grid.x * grid.y * grid.z) << " vs number of SM: " << SM_no << "\n";
 
       // allocate matrices on the device to host B/C/D submatrices,
       result = AllocateMatrix(&B_sub, GemmKernel::kThreadCount * args.problem_size.k() * column_blocks_no, inst_shape);
@@ -784,15 +731,11 @@ public:
 
       // result = AllocateMatrix(&D[0], args.problem_size.m(), args.problem_size.n());
       result = AllocateMatrix(&D[0], GemmKernel::kThreadCount * column_blocks_no * row_blocks_no, inst_shape);
-
-      std::cout << "D[0] data: " << D[0] << "\n";
       
       if(result != cudaSuccess){
         return Status::kErrorInternal;
       }
 
-      std::cout << "D[1] address: " << &D[1] << "\n";
-      // result = AllocateMatrix(&D[1], args.problem_size.m(), args.problem_size.n());
       result = AllocateMatrix(&D[1], GemmKernel::kThreadCount * column_blocks_no * row_blocks_no, inst_shape);
       
       if(result != cudaSuccess){
@@ -816,7 +759,6 @@ public:
           for (int k1 = 0; k1 < row_blocks_no; k1++) {
               // k2 is the index which keeps count of the line inside the currently selected block k1
               for (int k2 = 0; k2 < GemmKernel::kThreadCount; k2++){
-                if (k2 % 127 == 0) std::cout << "C " << k2 << "th index: " << i * GemmKernel::kThreadCount * column_blocks_no + j * GemmKernel::kThreadCount * args.problem_size.n() * row_blocks_no + k1 * GemmKernel::kThreadCount * args.problem_size.n() + k2 * args.problem_size.n() << "\n";
                 cudaMemcpy(C_sub + k1 * column_blocks_no * GemmKernel::kThreadCount * GemmKernel::kThreadCount + k2 * column_blocks_no * GemmKernel::kThreadCount, args.ref_C.data() + i * GemmKernel::kThreadCount * column_blocks_no + j * GemmKernel::kThreadCount * args.problem_size.n() * row_blocks_no + k1 * GemmKernel::kThreadCount * args.problem_size.n() + k2 * args.problem_size.n(), GemmKernel::kThreadCount * column_blocks_no * sizeof(float), cudaMemcpyDeviceToDevice);
               }
           }
@@ -826,7 +768,7 @@ public:
               {B_sub,column_blocks_no * GemmKernel::kThreadCount},    // Tensor-ref for source matrix B
               {C_sub,column_blocks_no * GemmKernel::kThreadCount},    // Tensor-ref for source matrix C
               {D_sub, column_blocks_no * GemmKernel::kThreadCount},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
-              {1,1}); // TODO: FIND A WAY TO RETRIEVE ALPHA AND BETA
+              {1,1});
 
           // launch the initialization phase and the kernel itself
           status = initialize(arg_int, D, workspace, stream);
@@ -839,7 +781,6 @@ public:
           for (int k1 = 0; k1 < row_blocks_no; k1++){
               // k2 is the index which keeps count of the line inside the currently selected block k1
               for (int k2 = 0; k2 < GemmKernel::kThreadCount; k2++){
-                if (k2 % 127 == 0) std::cout << "D " << k2 << "th index: " << i * GemmKernel::kThreadCount * column_blocks_no + j * GemmKernel::kThreadCount * args.problem_size.n() * row_blocks_no + k1 * GemmKernel::kThreadCount * args.problem_size.n() + k2 * args.problem_size.n() << "\n";
                 cudaMemcpy(args.ref_D.data() + i * GemmKernel::kThreadCount * column_blocks_no + j * GemmKernel::kThreadCount * args.problem_size.n() * row_blocks_no + k1 * GemmKernel::kThreadCount * args.problem_size.n() + k2 * args.problem_size.n(), D_sub + k1 * column_blocks_no * GemmKernel::kThreadCount * GemmKernel::kThreadCount + k2 * column_blocks_no * GemmKernel::kThreadCount, GemmKernel::kThreadCount * column_blocks_no * sizeof(float), cudaMemcpyDeviceToDevice);
               }
           }
@@ -849,20 +790,15 @@ public:
     } else {
 
       for (int i = 0; i< TMR; i++)
-        // host_D[i] = (float *)malloc(args.problem_size.m()*args.problem_size.n()*sizeof(float));
         host_D[i] = (float *)malloc(args.problem_size.m() * args.problem_size.n() * sizeof(float));
       
       // result = AllocateMatrix(&D[0], args.problem_size.m(), args.problem_size.n());
       result = AllocateMatrix(&D[0], GemmKernel::kThreadCount * grid_shape.n() * grid_shape.m(), inst_shape);
 
-      std::cout << "D[0] data: " << D[0] << "\n";
-      
       if(result != cudaSuccess){
         return Status::kErrorInternal;
       }
 
-      std::cout << "D[1] address: " << &D[1] << "\n";
-      // result = AllocateMatrix(&D[1], args.problem_size.m(), args.problem_size.n());
       result = AllocateMatrix(&D[1], GemmKernel::kThreadCount * grid_shape.n() * grid_shape.m(), inst_shape);
       
       if(result != cudaSuccess){
@@ -878,316 +814,10 @@ public:
       }
     }
 
-    std::cout << "done\n";
-    // cudaMemcpy(host_D[0], args.ref_D.data(), args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
     cudaMemcpy(host_D[0], args.ref_D.data(), args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
-    // cudaMemcpy(host_D[1], D[0], inst_shape * GemmKernel::kThreadCount * grid_shape.n() * grid_shape.m() * sizeof(float), cudaMemcpyDeviceToHost);
-    // cudaMemcpy(host_D[2], D[1], inst_shape * GemmKernel::kThreadCount * grid_shape.n() * grid_shape.m() * sizeof(float), cudaMemcpyDeviceToHost);
-
-    // std::cout << "D[0]:\n";
-    // for (int cnt = 0; cnt < args.problem_size.m() * args.problem_size.n(); cnt++){
-    //   // if(cnt / args.problem_size.n() == 32)
-    //   //   break;
-    //   // if (cnt % args.problem_size.n() < 32)
-    //     std::cout << host_D[0][cnt] << ' ';
-    //   // if(cnt % args.problem_size.n() == 32)
-    //   if(cnt % args.problem_size.n() == args.problem_size.n() - 1)
-    //     std::cout << "\n";
-    // }
-    // std::cout << "\n";
-    // std::cout << "D[1]:\n";
-    // for (int cnt = 0; cnt < inst_shape * GemmKernel::kThreadCount * grid_shape.n() * grid_shape.m(); cnt++){
-    //   std::cout << host_D[1][cnt] << ' ';
-    //   if(cnt % inst_shape == inst_shape - 1)
-    //     std::cout << "\n";
-    // }
-    // std::cout << "\n";
-    // std::cout << "D[2]:\n";
-    // for (int cnt = 0; cnt < inst_shape * GemmKernel::kThreadCount * grid_shape.n() * grid_shape.m(); cnt++){
-    //   std::cout << host_D[2][cnt] << ' ';
-    //   if(cnt % inst_shape == inst_shape - 1)
-    //     std::cout << "\n";
-    // }
-    // std::cout << "\n";
 
     return status;
 
-    /*
-    float* D[TMR]; // Additional matrices for TMR (DEV)
-    float* host_D[TMR]; // as before, but on the host (HOST)
-    float* tmp[TMR]; // temporary matrices for storing the results of comparisons between matrix 1-2, 2-3 and 1-3 (DEV)
-    float* host_tmp[TMR]; // as before, but they are kept on the host (to perform the comparisons between the sums and to handle odd sized matrices) (HOST)
-    cudaStream_t streams[TMR] = {stream, nullptr, nullptr}; // Streams for additional matrices
-    cudaError_t result;
-    Status status[TMR]; // GEMMs return value
-    Arguments args_arr[TMR]; // Arguments
-    char res = 10; // the index of the matrix where the correct result is stored (the result should be copied)
-
-    // mallocate the host matrices
-    for (int i = 0; i< TMR; i++)
-      host_tmp[i] = (float *)malloc(args.problem_size.m()*args.problem_size.n()*sizeof(float));
-
-    for (int i = 0; i< TMR; i++)
-      host_D[i] = (float *)malloc(args.problem_size.m()*args.problem_size.n()*sizeof(float));
-
-    //AllocateMatrix(float **matrix, int rows, int columns)
-    std::cout << "D[0] address: " << &D[0] << "\n";
-    std::cout << "D[0] data: " << D[0] << "\n";
-    // Allocate additional matrices 
-    result = AllocateMatrix(&D[0], args.problem_size.m(), args.problem_size.n());
-
-    std::cout << "D[0] data: " << D[0] << "\n";
-    
-    if(result != cudaSuccess){
-      return Status::kErrorInternal;
-    }
-
-    std::cout << "D[1] address: " << &D[1] << "\n";
-    result = AllocateMatrix(&D[1], args.problem_size.m(), args.problem_size.n());
-    
-    if(result != cudaSuccess){
-      cudaFree(D[0]);
-      return Status::kErrorInternal;
-    }
-    
-    std::cout << "D[2] address: " << &D[2] << "\n";
-    result = AllocateMatrix(&D[2], args.problem_size.m(), args.problem_size.n());
-    
-    if(result != cudaSuccess){
-      cudaFree(D[0]);
-      cudaFree(D[1]);
-      return Status::kErrorInternal;
-    }
-    
-    result = AllocateMatrix(&tmp[0], args.problem_size.m(), args.problem_size.n());
-    
-    if(result != cudaSuccess){
-      cudaFree(D[0]);
-      cudaFree(D[1]);
-      cudaFree(D[2]);
-      return Status::kErrorInternal;
-    }
-
-    result = AllocateMatrix(&tmp[1], args.problem_size.m(), args.problem_size.n());
-    
-    if(result != cudaSuccess){
-      cudaFree(D[0]);
-      cudaFree(D[1]);
-      cudaFree(D[2]);
-      cudaFree(tmp[0]);
-      return Status::kErrorInternal;
-    }
-
-    result = AllocateMatrix(&tmp[2], args.problem_size.m(), args.problem_size.n());
-    
-    if(result != cudaSuccess){
-      cudaFree(D[0]);
-      cudaFree(D[1]);
-      cudaFree(D[2]);
-      cudaFree(tmp[0]);
-      cudaFree(tmp[1]);
-      return Status::kErrorInternal;
-    }
-
-    // Create additional streams for matrices operations
-    result = cudaStreamCreate(&streams[1]);
-
-    if(result != cudaSuccess){
-      cudaFree(D[0]);
-      cudaFree(D[1]);
-      cudaFree(D[2]);
-      return Status::kErrorInternal;
-    }
-
-    result = cudaStreamCreate(&streams[2]);
-
-    if(result != cudaSuccess){
-      cudaFree(D[0]);
-      cudaFree(D[1]);
-      cudaFree(D[2]);
-      cudaStreamDestroy(streams[1]);
-      return Status::kErrorInternal;
-    }
-    
-
-    workspace = nullptr; // Forced to nullptr since we don't know what it does
-
-    std::cout << "ref_D: " << (D[0]) << "\n";
-    std::cout << "ref_D: " << (D[1]) << "\n";
-    std::cout << "ref_D: " << (D[2]) << "\n";
-    std::cout << "problem_size: " << args.problem_size.m() << "\n";
-    //std::cout << "layout: " << args.ref_D.stride() << "\n";
-
-    //  The operations inside the loop need to be done in that specific order for each destination matrix
-    //  since, otherwise, the params_ structure would be overwritten by the 'initialize' method.
-    //  This means that, for example, it is not possible to initialize the args for each matrix before
-    //  calling the 'run' method.
-    CUTLASS_PRAGMA_UNROLL
-    for(int i=0;i<TMR;i++){
-      
-      // args_arr[i] = Arguments(args.problem_size,  // Gemm Problem dimensions
-      //         args.ref_A,    // Tensor-ref for source matrix A
-      //         args.ref_B,    // Tensor-ref for source matrix B
-      //         args.ref_C,    // Tensor-ref for source matrix C
-      //         //{D[i], args.ref_D.layout()},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
-      //         args.ref_D,
-      //         //{args.ref_D.data(), args.ref_D.layout()},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
-      //         //{0,0},
-      //         {args.epilogue.alpha_ptr, args.epilogue.beta_ptr}); // Scalars used in the Epilogue
-      //         //{0.0, 0.0});
-      args_arr[i] = Arguments({args.problem_size.m(), args.problem_size.n(), args.problem_size.k()},  // Gemm Problem dimensions
-              {args.ref_A.const_ref().data(),args.problem_size.m()},    // Tensor-ref for source matrix A
-              {args.ref_B.const_ref().data(),args.problem_size.k()},    // Tensor-ref for source matrix B
-              {args.ref_C.data(),args.problem_size.m()},    // Tensor-ref for source matrix C
-              {D[i], args.problem_size.m()},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
-              //{args.ref_D.data(),args.problem_size.m()},
-              //{args.ref_D.data(), args.ref_D.layout()},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
-              {1,0}); // TODO: FIND A WAY TO RETRIEVE ALPHA AND BETA, THE ptr BELOW DO NOT WORK
-              //{args.epilogue.alpha_ptr, args.epilogue.beta_ptr}); // Scalars used in the Epilogue
-              //{0.0, 0.0});
-      status[i] = initialize(args_arr[i], workspace, streams[i]);
-      //status[i] = initialize(args, workspace, stream);
-      std::cout << "before run \n";
-      std::cout << "params.ref_D: " << params_.ref_D.data() << "\n";
-      if (status[i] == Status::kSuccess) {
-        std:: cout << "running instance " << i << "\n";
-        //status[i] = run(streams[i]);
-        status[i] = run(stream);
-      }
-      if (status[i] != Status::kSuccess) {
-        return Status::kErrorInternal;
-      }
-    }
-
-    //cudaDeviceSynchronize();
-    //cudaMemcpy(args.ref_D.data(), D[0], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
-    //return status[0];
-    std:: cout << "reached sync point \n";
-    cudaDeviceSynchronize();
-    std:: cout << "passed sync point \n";
-
-    // check results
-    cudaMemcpy(host_D[0], D[0], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(host_D[1], D[1], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(host_D[2], D[2], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
-
-    std:: cout << "D[0] address: " << host_D[0] << "\n";
-    for(int i = 0; i< args.problem_size.m()*args.problem_size.n(); i++)
-      std:: cout << host_D[0][i] << " ";
-    std:: cout << "\n";
-
-    std:: cout << "D[1] address: " << host_D[1] << "\n";
-    for(int i = 0; i< args.problem_size.m()*args.problem_size.n(); i++)
-      std:: cout << host_D[1][i] << " ";
-    std:: cout << "\n";
-
-    std:: cout << "D[2] address: " << host_D[2] << "\n";
-    for(int i = 0; i< args.problem_size.m()*args.problem_size.n(); i++)
-      std:: cout << host_D[2][i] << " ";
-    std:: cout << "\n";
-
-    // Operation results check
-    ThreadblockSwizzle threadblock_swizzle;
-    
-    // redefine grid and block size
-    dim3 grid = threadblock_swizzle.get_grid_shape(params_.grid_tiled_shape);
-    dim3 block(GemmKernel::kThreadCount, 1, 1);
-    dim3 block_reduce(args.problem_size.m()*args.problem_size.n()/2, 1, 1);
-
-    std::cout << "block size: " << GemmKernel::kThreadCount << "\n";
-    std::cout << "grid size: " << grid << "\n";
-
-    std:: cout << "after dim3 definitions \n";
-    
-    // call comparison kernels on different streams to make sure they are executed in parallel
-    CompareMatrix_kernel<<<grid,block,0,streams[0]>>>(tmp[0],D[0],D[1],args.problem_size.m()*args.problem_size.n());
-    CompareMatrix_kernel<<<grid,block,0,streams[1]>>>(tmp[1],D[1],D[2],args.problem_size.m()*args.problem_size.n());
-    CompareMatrix_kernel<<<grid,block,0,streams[2]>>>(tmp[2],D[0],D[2],args.problem_size.m()*args.problem_size.n());
-
-    cudaDeviceSynchronize();
-
-    cudaMemcpy(host_tmp[0], tmp[0], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(host_tmp[1], tmp[1], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(host_tmp[2], tmp[2], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
-
-    cudaDeviceSynchronize();
-
-    std:: cout << "tmp address: " << host_tmp[0] << "\n";
-    for(int i = 0; i< args.problem_size.m()*args.problem_size.n(); i++)
-      std:: cout << host_tmp[0][i] << " ";
-    std:: cout << "\n";
-
-    ReduceMatrix_kernel<<<grid,block_reduce,0,streams[0]>>>(tmp[0],args.problem_size.m()*args.problem_size.n());
-    ReduceMatrix_kernel<<<grid,block_reduce,0,streams[1]>>>(tmp[1],args.problem_size.m()*args.problem_size.n());
-    ReduceMatrix_kernel<<<grid,block_reduce,0,streams[2]>>>(tmp[2],args.problem_size.m()*args.problem_size.n());
-
-    std:: cout << "after compare and reduction\n";
-
-    cudaDeviceSynchronize();
-    
-    std:: cout << "after second sync \n";
-
-    // copy tmp matrices in host_tmp matrices
-    cudaMemcpy(host_tmp[0], tmp[0], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(host_tmp[1], tmp[1], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(host_tmp[2], tmp[2], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
-
-    cudaDeviceSynchronize();
-
-    std:: cout << "tmp address: " << host_tmp[0] << "\n";
-    for(int i = 0; i< args.problem_size.m()*args.problem_size.n(); i++)
-      std:: cout << host_tmp[0][i] << " ";
-    std:: cout << "\n";
-
-    // handle odd sized arrays: you have to add up the last element of the matrix/array to the first one (the one where the result is stored)
-    if(args.problem_size.m()*args.problem_size.n() % 2 == 1){
-      std:: cout << "you shouldn't be here... \n";
-      *host_tmp[0] = *host_tmp[0] + *(host_tmp[0] + args.problem_size.m()*args.problem_size.n() - 1);
-      *host_tmp[1] = *host_tmp[1] + *(host_tmp[1] + args.problem_size.m()*args.problem_size.n() - 1);
-      *host_tmp[2] = *host_tmp[2] + *(host_tmp[2] + args.problem_size.m()*args.problem_size.n() - 1);
-    }
-
-    std:: cout << "after odd size handling \n";
-
-    // actual checks
-    if(*host_tmp[0] == *host_tmp[1]){
-      res = 0; // or 1, it's the same
-    }else if(*host_tmp[1] == *host_tmp[2]){
-      res = 1; // or 1, it's the same
-    }else if(*host_tmp[0] == *host_tmp[2]){
-      res = 0; // or 1, it's the same
-    }
-    if(res == 10){
-      return Status::kRedundancyError;
-    }
-
-    std::cout << "res: " << res << "\n";
-
-    // copy the result matrix in the real destination
-    if(res == 0){
-      cudaMemcpy(args.ref_D.data(), D[0], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
-    }else if(res == 1){
-      cudaMemcpy(args.ref_D.data(), D[1], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
-    }else if(res == 2){
-      cudaMemcpy(args.ref_D.data(), D[2], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
-    }
-
-    // Free resources
-    cudaFree(D[0]);
-    cudaFree(D[1]);
-    cudaFree(D[2]);
-    cudaFree(tmp[0]);
-    cudaFree(tmp[1]);
-    cudaFree(tmp[2]);
-    cudaStreamDestroy(streams[1]);
-    cudaStreamDestroy(streams[2]);
-
-    // mallocate the host_tmp matrices
-    for (int i = 0; i< TMR; i++)
-      free(host_tmp[i]);
-
-    return Status::kSuccess;
-    */
   }
 };
 
