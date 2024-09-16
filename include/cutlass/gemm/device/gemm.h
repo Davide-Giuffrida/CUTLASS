@@ -384,13 +384,8 @@ public:
 
     size_t sizeof_matrix = sizeof(float) * rows * columns;
 
-    std::cout << "matrix before allocation: " << *matrix << "\n";
-    std::cout << "matrix size: " << sizeof_matrix << "\n";
-
     // Allocate device memory.
     result = cudaMalloc(reinterpret_cast<void **>(matrix), sizeof_matrix);
-
-    std::cout << "newly allocated matrix: " << *matrix << "\n";
 
     /*if (result != cudaSuccess) {
       return result;
@@ -520,8 +515,6 @@ public:
         return Status::kErrorInvalidProblem;
       }
     }
-
-    std::cout << "ref_C: " << args.ref_C.data() << "\n";
 
     // Initialize the Params structure
     params_ = typename GemmKernel::Params{

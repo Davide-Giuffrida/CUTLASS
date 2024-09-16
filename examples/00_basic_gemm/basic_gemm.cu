@@ -143,8 +143,6 @@ cudaError_t CutlassSgemmNN(
   //
   // Launch the CUTLASS GEMM kernel.
   //
-  std::cout << "A address: " << A << "\n";
-  //std::cout << "A first element: " << A[0] << "\n";
   
   // TODO: PASS A FIRST STREAM AS A PARAMETER, SINCE INSIDE THE OPERATOR ONLY TWO STREAMS ARE CREATED (IS THIS NECESSARY OR WILL THE FIRST KERNEL BY EXECUTED ON THE STREAM 0 IF A STREAM IS NOT SPECIFIED?)
   cutlass::Status status = gemm_operator(args);
@@ -213,14 +211,8 @@ cudaError_t AllocateMatrix(float **matrix, int rows, int columns, int seed = 0, 
 
   size_t sizeof_matrix = sizeof(float) * rows * columns;
 
-  //cudaFree(0);
-
-  std::cout << "before allocation (CU): " << *matrix << "\n";
-
   // Allocate device memory.
   result = cudaMalloc(reinterpret_cast<void **>(matrix), sizeof_matrix);
-
-  std::cout << "after allocation (CU): " << *matrix << "\n";
 
   if (result != cudaSuccess) {
     std::cerr << "Failed to allocate matrix: "
@@ -362,26 +354,6 @@ cudaError_t TestCutlassGemm(int M, int N, int K, float alpha, float beta) {
   result = cudaMemcpy(host_B.data(), B, sizeof_B, cudaMemcpyDeviceToHost);
   //TODO: AS ABOVE
 
-  int cnt = 0;
-  std::cout << "A:\n";
-  for(float i: host_A){
-    cnt++;
-    std::cout << i << ' ';
-    if(cnt % M == 0)
-      std::cout << "\n";
-  }
-  std::cout << "\n";
-
-  cnt = 0;
-  std::cout << "B:\n";
-  for(float i: host_B){
-    cnt++;
-    std::cout << i << ' ';
-    if(cnt % K == 0)
-      std::cout << "\n";
-  }
-  std::cout << "\n";
-
   result = AllocateMatrix(&C_cutlass, M, N, 101, false);
 
   if (result != cudaSuccess) {
@@ -401,16 +373,6 @@ cudaError_t TestCutlassGemm(int M, int N, int K, float alpha, float beta) {
 
   result = cudaMemcpy(C_reference, C_cutlass, sizeof_C, cudaMemcpyDeviceToDevice);
   result = cudaMemcpy(host_C.data(), C_reference, sizeof_C, cudaMemcpyDeviceToHost);
-
-  std::cout << "C:\n";
-  cnt = 0;
-  for(float i: host_C){
-    cnt++;
-    std::cout << i << ' ';
-    if(cnt % M == 0)
-      std::cout << "\n";
-  }
-  std::cout << "\n";
 
   if (result != cudaSuccess) {
     std::cerr << "Failed to copy C_cutlass matrix to C_reference: "
@@ -502,27 +464,6 @@ cudaError_t TestCutlassGemm(int M, int N, int K, float alpha, float beta) {
   cudaFree(B);
   cudaFree(A);
 
-  // print the results
-  std::cout << "CUTLASS:\n";
-  cnt = 0;
-  for (float i: host_cutlass){
-    cnt++;
-    std::cout << i << ' ';
-    if(cnt % M == 0)
-      std::cout << "\n";
-  }
-  std::cout << "\n";
-
-  std::cout << "REFERENCE:\n";
-  cnt = 0;
-  for (float i: host_reference){
-    cnt++;
-    std::cout << i << ' ';
-    if(cnt % M == 0)
-      std::cout << "\n";
-  }
-  std::cout << "\n";
-
   //
   // Test for bit equivalence of results.
   //
@@ -560,7 +501,7 @@ int main(int argc, const char *arg[]) {
   // define a handler for sigint to clear cuda context before quitting
   signal(SIGINT, sigintHandler);
   // GEMM problem dimensions.
-  int problem[3] = { 512, 512, 512 };
+  int problem[3] = { 4096, 4096, 4096 };
   //int problem[3] = { 4, 4, 4 };
 
   for (int i = 1; i < argc && i < 4; ++i) {
