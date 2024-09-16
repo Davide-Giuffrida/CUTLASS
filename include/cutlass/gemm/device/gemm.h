@@ -729,9 +729,7 @@ public:
         return Status::kErrorInternal;
     }
 
-    std:: cout << "reached sync point \n";
     cudaDeviceSynchronize();
-    std:: cout << "passed sync point \n";
 
     // check results
     // cudaMemcpy(host_D[0], D[0], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
