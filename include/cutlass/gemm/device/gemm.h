@@ -87,6 +87,26 @@ namespace device {
     }
   }
 
+
+  /// Kernel to reduce matrix to one element
+  // Maximum matrix elements supported: 2^32
+  __global__ void ReduceMatrix_kernel(
+    float *matrix,
+    int   elements,
+    int   elem_dist
+  )
+  {
+    int ja = threadIdx.x * 2 + blockIdx.x * blockDim.x * 2;
+    
+    if(elem_dist == 1 || (ja % (elem_dist*2)) == 0){ // filter all threads that are not needed anymore
+      if(ja < elements){
+        if(ja + elem_dist < elements){
+          matrix[ja] = matrix[ja] + matrix[ja + elem_dist];
+        }
+      }
+    }
+  }
+
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*! Gemm device-level operator. This is an interface to efficient CUTLASS GEMM kernels that may
@@ -673,7 +693,7 @@ public:
     }
 
     // the 16 is probably the K dimension of the warp shape
-    int total_gemm_k_iterations = (args.problem_size.k() + 16 - 1) / 16; //Mma::Shape::kK = 8 size of the block on A,B matrices
+    int total_gemm_k_iterations = (args.problem_size.k() + 32 - 1) / 32; //Mma::Shape::kK = 8 size of the block on A,B matrices
 
     // define the new args_int structures
     for (int i = 0; i < TMR; i++){
@@ -718,14 +738,21 @@ public:
         CompareMatrix_kernel<<<grid,block,0,streams[i]>>>(tmp[i],device_D[i],device_D[(i+1) % TMR],args.problem_size.m()*args.problem_size.n());
       // wait for the comparison kernels to finish
       cudaDeviceSynchronize();
+      
+      // Reduction
+      // BEWARE: DO NOT USE the CUDA implementation of pow() (i.e. inside the kernel), THERE ARE ROUNDING ERRORS 
+      for (int i = 0; i < int(log2(args.problem_size.m() * args.problem_size.n())); i++){
+        ReduceMatrix_kernel<<<grid_reduce,block_reduce,0,streams[0]>>>(tmp[0],args.problem_size.m()*args.problem_size.n(),pow(2,i));
+        ReduceMatrix_kernel<<<grid_reduce,block_reduce,0,streams[1]>>>(tmp[1],args.problem_size.m()*args.problem_size.n(),pow(2,i));
+        ReduceMatrix_kernel<<<grid_reduce,block_reduce,0,streams[2]>>>(tmp[2],args.problem_size.m()*args.problem_size.n(),pow(2,i));
+        cudaDeviceSynchronize();
+      }
 
       // copy the results to the host 
       for (int i = 0; i < TMR; i++)
         cudaMemcpy(host_D[i], tmp[i], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
-      
-      for (int i = 0; i < TMR; i++)
-        for (int j = 1; j < args.problem_size.m() * args.problem_size.n(); j++)
-          *host_D[i] = *(host_D[i] + j) + *(host_D[i]);
+
+      cudaDeviceSynchronize();
 
       // handle odd sized arrays: add the last element manually (it is not reached by the algorithm implemented in the kernel)
       if(args.problem_size.m()*args.problem_size.n() % 2 == 1){

@@ -121,8 +121,10 @@ cudaError_t CutlassSgemmNN(
                                                 float,
                                                 cutlass::arch::OpClassTensorOp,
                                                 cutlass::arch::Sm80,
-                                                cutlass::gemm::GemmShape<128, 128, 16>,
-                                                cutlass::gemm::GemmShape<64, 64, 16>,
+                                                // cutlass::gemm::GemmShape<128, 128, 16>,
+                                                cutlass::gemm::GemmShape<256, 256, 32>,
+                                                // cutlass::gemm::GemmShape<64, 64, 16>,
+                                                cutlass::gemm::GemmShape<128, 128, 32>,
                                                 cutlass::gemm::GemmShape<16, 8, 8>,
                                                 cutlass::epilogue::thread::LinearCombination<float, 128 / cutlass::sizeof_bits<float>::value, float,float>,
                                                 cutlass::gemm::threadblock::GemmIdentityThreadblockSwizzle<>,
@@ -558,7 +560,7 @@ int main(int argc, const char *arg[]) {
   signal(SIGINT, sigintHandler);
   // GEMM problem dimensions.
   // int problem[3] = { 128, 128, 128 };
-  int problem[3] = { 512, 512, 512 };
+  int problem[3] = { 4096, 4096, 4096};
 
   for (int i = 1; i < argc && i < 4; ++i) {
     std::stringstream ss(arg[i]);
