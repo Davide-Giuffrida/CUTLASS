@@ -93,22 +93,18 @@ namespace device {
   // Maximum matrix elements supported: 2^32
   __global__ void ReduceMatrix_kernel(
     float *matrix,
-    int   elements
+    int   elements,
+    int   elem_dist
   )
   {
-    for (int i=0; i < int(log2(elements)); i++){
-    //for (int i=0; i < 2; i++){
-      int ja = threadIdx.x * 2 + blockIdx.x * blockDim.x * 2;
+    int ja = threadIdx.x * 2 + blockIdx.x * blockDim.x * 2;
+    
+    if(elem_dist == 1 || (ja % (elem_dist*2)) == 0){ // filter all threads that are not needed anymore
       if(ja < elements){
-        if(ja + i + pow(2,i) < elements){
-          matrix[ja] = matrix[ja] + matrix[ja + int(pow(2,i))];
+        if(ja + elem_dist < elements){
+          matrix[ja] = matrix[ja] + matrix[ja + elem_dist];
         }
       }
-      // delete all threads that are not needed anymore
-      if((ja + int(pow(2,i + 1))) % int(pow(2,i + 2)) == 0){
-        return;
-      }
-      __syncthreads();
     }
   }
 
@@ -884,32 +880,49 @@ public:
 
     cudaDeviceSynchronize();
 
+    //cudaMemcpy(host_tmp[0], tmp[0], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
+    //cudaMemcpy(host_tmp[1], tmp[1], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
+    //cudaMemcpy(host_tmp[2], tmp[2], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
+    //cudaDeviceSynchronize();
+
+    //std:: cout << "tmp address: " << host_tmp[0] << "\n";
+    //for(int i = 0; i< args.problem_size.m()*args.problem_size.n(); i++)
+    //  std:: cout << host_tmp[0][i] << " ";
+    //std:: cout << "\n";
+
+    //for (int i = 0; i < TMR; i++)
+    //    for (int j = 1; j < args.problem_size.m() * args.problem_size.n(); j++)
+    //      *host_tmp[i] = *(host_tmp[i] + j) + *(host_tmp[i]);
+
+
+    // Reduction
+    // BEWARE: DO NOT USE the CUDA implementation of pow() (i.e. inside the kernel), THERE ARE ROUNDING ERRORS 
+    for (int i = 0; i < int(log2(args.problem_size.m() * args.problem_size.n())); i++){
+      ReduceMatrix_kernel<<<grid_reduce,block_reduce,0,streams[0]>>>(tmp[0],args.problem_size.m()*args.problem_size.n(),pow(2,i));
+      ReduceMatrix_kernel<<<grid_reduce,block_reduce,0,streams[1]>>>(tmp[1],args.problem_size.m()*args.problem_size.n(),pow(2,i));
+      ReduceMatrix_kernel<<<grid_reduce,block_reduce,0,streams[2]>>>(tmp[2],args.problem_size.m()*args.problem_size.n(),pow(2,i));
+      cudaDeviceSynchronize();
+    }
+    
+    std:: cout << "after compare and reduction\n";
+
+    // copy tmp matrices in host_tmp matrices
     cudaMemcpy(host_tmp[0], tmp[0], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
     cudaMemcpy(host_tmp[1], tmp[1], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
     cudaMemcpy(host_tmp[2], tmp[2], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
 
     cudaDeviceSynchronize();
-
-    std:: cout << "tmp address: " << host_tmp[0] << "\n";
-    for(int i = 0; i< args.problem_size.m()*args.problem_size.n(); i++)
-      std:: cout << host_tmp[0][i] << " ";
-    std:: cout << "\n";
-
-    for (int i = 0; i < TMR; i++)
-        for (int j = 1; j < args.problem_size.m() * args.problem_size.n(); j++)
-          *host_tmp[i] = *(host_tmp[i] + j) + *(host_tmp[i]);
-
-    std:: cout << "after compare and reduction\n";
-
-    // copy tmp matrices in host_tmp matrices
-    // cudaMemcpy(host_tmp[0], tmp[0], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
-    // cudaMemcpy(host_tmp[1], tmp[1], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
-    // cudaMemcpy(host_tmp[2], tmp[2], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
-
-    std:: cout << "tmp address: " << host_tmp[0] << "\n";
-    for(int i = 0; i< args.problem_size.m()*args.problem_size.n(); i++)
-      std:: cout << host_tmp[0][i] << " ";
-    std:: cout << "\n";
+    //std:: cout << "-------------------------- TMR ----------------------------\n";
+    //  for(int i = 0; i< args.problem_size.m()*args.problem_size.n(); i++){
+    //    if(i % args.problem_size.n() == 0)
+    //     std::cout << "\n";
+    //    std:: cout << host_tmp[0][i] << " ";
+    //}
+    //std:: cout << "\n";
+    //std:: cout << "tmp address: " << host_tmp[0] << "\n";
+    //for(int i = 0; i< args.problem_size.m()*args.problem_size.n(); i++)
+    //  std:: cout << host_tmp[0][i] << " ";
+    //std:: cout << "\n";
 
     // handle odd sized arrays: you have to add up the last element of the matrix/array to the first one (the one where the result is stored)
     if(args.problem_size.m()*args.problem_size.n() % 2 == 1){
@@ -921,6 +934,8 @@ public:
 
     std:: cout << "after odd size handling \n";
 
+    std:: cout << "REDUCTION RESULTS: " << *host_tmp[0] << ", " << *host_tmp[1] << ", " << *host_tmp[2] << "\n";
+    std:: cout << *(host_tmp[0]+8192) << ", " << *(host_tmp[1]+8192) << ", " << *(host_tmp[2]+8192) << "\n";
     // actual checks
     if(*host_tmp[0] == args.problem_size.m()*args.problem_size.n()){
       res = 0; // or 1, it's the same
