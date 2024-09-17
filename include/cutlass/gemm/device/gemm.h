@@ -87,6 +87,25 @@ namespace device {
     }
   }
 
+  /// Kernel to reduce matrix to one element
+  // Maximum matrix elements supported: 2^32
+  __global__ void ReduceMatrix_kernel(
+    float *matrix,
+    int   elements,
+    int   elem_dist
+  )
+  {
+    int ja = threadIdx.x * 2 + blockIdx.x * blockDim.x * 2;
+    
+    if(elem_dist == 1 || (ja % (elem_dist*2)) == 0){ // filter all threads that are not needed anymore
+      if(ja < elements){
+        if(ja + elem_dist < elements){
+          matrix[ja] = matrix[ja] + matrix[ja + elem_dist];
+        }
+      }
+    }
+  }
+
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*! Gemm device-level operator. This is an interface to efficient CUTLASS GEMM kernels that may
@@ -772,15 +791,20 @@ public:
 
     cudaDeviceSynchronize();
 
+    // Reduction
+    // BEWARE: DO NOT USE the CUDA implementation of pow() (i.e. inside the kernel), THERE ARE ROUNDING ERRORS 
+    for (int i = 0; i < int(log2(args.problem_size.m() * args.problem_size.n())); i++){
+      ReduceMatrix_kernel<<<grid_reduce,block_reduce,0,streams[0]>>>(tmp[0],args.problem_size.m()*args.problem_size.n(),pow(2,i));
+      ReduceMatrix_kernel<<<grid_reduce,block_reduce,0,streams[1]>>>(tmp[1],args.problem_size.m()*args.problem_size.n(),pow(2,i));
+      ReduceMatrix_kernel<<<grid_reduce,block_reduce,0,streams[2]>>>(tmp[2],args.problem_size.m()*args.problem_size.n(),pow(2,i));
+      cudaDeviceSynchronize();
+    }
+
     cudaMemcpy(host_tmp[0], tmp[0], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
     cudaMemcpy(host_tmp[1], tmp[1], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
     cudaMemcpy(host_tmp[2], tmp[2], args.problem_size.m() * args.problem_size.n() * sizeof(float), cudaMemcpyDeviceToHost);
 
     cudaDeviceSynchronize();
-
-    for (int i = 0; i < TMR; i++)
-        for (int j = 1; j < args.problem_size.m() * args.problem_size.n(); j++)
-          *host_tmp[i] = *(host_tmp[i] + j) + *(host_tmp[i]);
 
     // handle odd sized arrays: you have to add up the last element of the matrix/array to the first one (the one where the result is stored)
     if(args.problem_size.m()*args.problem_size.n() % 2 == 1){
