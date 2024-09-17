@@ -500,7 +500,7 @@ int main(int argc, const char *arg[]) {
   cudaDeviceProp deviceProp;
   cudaGetDeviceProperties(&deviceProp, 0);
   // GEMM problem dimensions.
-  int problem[3] = {8192,8192,8192};
+  int problem[3] = {4096,4096,4096};
   //int problem[3] = { 4, 4, 4 };
 
   for (int i = 1; i < argc && i < 4; ++i) {

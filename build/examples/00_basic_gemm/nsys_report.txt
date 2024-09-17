@@ -1,3 +1,4 @@
+Generating SQLite file report1.sqlite from report1.nsys-rep
 Using report1.sqlite for SQL queries.
 Running [/usr/local/cuda-11.6/nsight-systems-2021.5.2/target-linux-x64/reports/nvtxsum.py report1.sqlite]... SKIPPED: report1.sqlite does not contain NV Tools Extension (NVTX) data.
 
@@ -5,37 +6,38 @@ Running [/usr/local/cuda-11.6/nsight-systems-2021.5.2/target-linux-x64/reports/o
 
 Running [/usr/local/cuda-11.6/nsight-systems-2021.5.2/target-linux-x64/reports/cudaapisum.py report1.sqlite]... 
 
- Time (%)  Total Time (ns)  Num Calls    Avg (ns)    Med (ns)  Min (ns)   Max (ns)    StdDev (ns)         Name      
- --------  ---------------  ---------  ------------  --------  --------  -----------  ------------  ----------------
-     99,0      108.090.860          4  27.022.715,0   3.033,0     1.636  108.083.157  54.040.294,0  cudaMalloc      
-      0,0          102.348          6      17.058,0   8.198,0     6.448       57.227      19.887,0  cudaMemcpy      
-      0,0           59.384          4      14.846,0   2.605,0     1.343       52.830      25.350,0  cudaFree        
-      0,0           28.151          4       7.037,0   5.694,0     3.590       13.172       4.400,0  cudaLaunchKernel
-      0,0           14.933          4       3.733,0   2.384,0     1.666        8.498       3.194,0  cudaMemset      
+ Time (%)  Total Time (ns)  Num Calls    Avg (ns)     Med (ns)    Min (ns)    Max (ns)     StdDev (ns)              Name            
+ --------  ---------------  ---------  ------------  -----------  --------  -------------  ------------  ---------------------------
+     98,0    5.272.865.679     49.159     107.261,0      3.265,0     2.994  1.056.189.744   5.110.912,0  cudaMemcpy                 
+      1,0       91.302.541          9  10.144.726,0     94.970,0     1.806     89.598.987  29.798.264,0  cudaMalloc                 
+      0,0        3.353.789          4     838.447,0  1.064.362,0   120.647      1.104.418     478.996,0  cudaFree                   
+      0,0        1.012.748        128       7.912,0      7.175,0     4.289         60.567       5.049,0  cudaLaunchCooperativeKernel
+      0,0           70.702          9       7.855,0      7.319,0     3.198         19.209       4.851,0  cudaMemset                 
+      0,0           31.870          3      10.623,0      8.543,0     4.576         18.751       7.312,0  cudaLaunchKernel           
 
 Running [/usr/local/cuda-11.6/nsight-systems-2021.5.2/target-linux-x64/reports/gpukernsum.py report1.sqlite]... 
 
- Time (%)  Total Time (ns)  Instances  Avg (ns)  Med (ns)  Min (ns)  Max (ns)  StdDev (ns)                                                  Name                                                
- --------  ---------------  ---------  --------  --------  --------  --------  -----------  ----------------------------------------------------------------------------------------------------
-     88,0           48.928          1  48.928,0  48.928,0    48.928    48.928          0,0  void cutlass::Kernel<cutlass::gemm::kernel::Gemm<cutlass::gemm::threadblock::MmaPipelined<cutlass::…
-      7,0            3.872          2   1.936,0   1.936,0     1.920     1.952         22,0  InitializeMatrix_kernel(float *, int, int, int)                                                     
-      5,0            2.752          1   2.752,0   2.752,0     2.752     2.752          0,0  ReferenceGemm_kernel(int, int, int, float, const float *, int, const float *, int, float, float *, …
+ Time (%)  Total Time (ns)  Instances     Avg (ns)         Med (ns)        Min (ns)       Max (ns)     StdDev (ns)                                                   Name                                                
+ --------  ---------------  ---------  ---------------  ---------------  -------------  -------------  ------------  ----------------------------------------------------------------------------------------------------
+     78,0    3.992.922.596        128     31.194.707,0     26.869.192,0     19.951.715     43.668.047  11.047.623,0  void cutlass::Kernel<cutlass::gemm::kernel::Gemm<cutlass::gemm::threadblock::MmaPipelined<cutlass::…
+     21,0    1.077.913.423          1  1.077.913.423,0  1.077.913.423,0  1.077.913.423  1.077.913.423           0,0  ReferenceGemm_kernel(int, int, int, float, const float *, int, const float *, int, float, float *, …
+      0,0          317.822          2        158.911,0        158.911,0        158.815        159.007         135,0  InitializeMatrix_kernel(float *, int, int, int)                                                     
 
 Running [/usr/local/cuda-11.6/nsight-systems-2021.5.2/target-linux-x64/reports/gpumemtimesum.py report1.sqlite]... 
 
- Time (%)  Total Time (ns)  Count  Avg (ns)  Med (ns)  Min (ns)  Max (ns)  StdDev (ns)      Operation     
- --------  ---------------  -----  --------  --------  --------  --------  -----------  ------------------
-     50,0            4.864      5     972,0     864,0       832     1.152        164,0  [CUDA memcpy DtoH]
-     31,0            3.008      4     752,0     720,0       704       864         76,0  [CUDA memset]     
-     18,0            1.728      1   1.728,0   1.728,0     1.728     1.728          0,0  [CUDA memcpy DtoD]
+ Time (%)  Total Time (ns)  Count    Avg (ns)     Med (ns)    Min (ns)    Max (ns)   StdDev (ns)      Operation     
+ --------  ---------------  ------  -----------  -----------  ---------  ----------  -----------  ------------------
+     62,0       96.325.607  49.153      1.959,0      1.791,0      1.280     326.877      1.585,0  [CUDA memcpy DtoD]
+     34,0       52.838.198       6  8.806.366,0  6.461.463,0  6.390.712  20.555.647  5.756.120,0  [CUDA memcpy DtoH]
+      3,0        5.685.727       9    631.747,0    157.216,0      2.560   5.038.817  1.654.494,0  [CUDA memset]     
 
 Running [/usr/local/cuda-11.6/nsight-systems-2021.5.2/target-linux-x64/reports/gpumemsizesum.py report1.sqlite]... 
 
- Total (MB)  Count  Avg (MB)  Med (MB)  Min (MB)  Max (MB)  StdDev (MB)      Operation     
- ----------  -----  --------  --------  --------  --------  -----------  ------------------
- 0,005           5  0,001     0,001     0,001     0,001     0,000        [CUDA memcpy DtoH]
- 0,004           4  0,001     0,001     0,001     0,001     0,000        [CUDA memset]     
- 0,001           1  0,001     0,001     0,001     0,001     0,000        [CUDA memcpy DtoD]
+ Total (MB)  Count   Avg (MB)  Med (MB)  Min (MB)  Max (MB)  StdDev (MB)      Operation     
+ ----------  ------  --------  --------  --------  --------  -----------  ------------------
+ 2418,016         9  268,668   67,109    0,524     2147,484  705,342      [CUDA memset]     
+ 402,653          6  67,109    67,109    67,109    67,109    0,000        [CUDA memcpy DtoH]
+ 268,435     49.153  0,005     0,004     0,004     67,109    0,303        [CUDA memcpy DtoD]
 
 Running [/usr/local/cuda-11.6/nsight-systems-2021.5.2/target-linux-x64/reports/openmpevtsum.py report1.sqlite]... SKIPPED: report1.sqlite does not contain OpenMP event data.
 
