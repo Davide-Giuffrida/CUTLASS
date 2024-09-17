@@ -4,12 +4,6 @@
 This repository shows four different implementations of a TMR mechanism to improve the reliability of matrix multiplications. The library that has been used as a reference is [CUTLASS](https://github.com/NVIDIA/cutlass), an open-source repository which fully exploits GPU capabilities by decomposing the problem in multiple parts, each one to be executed at a certain abstraction level in the CUDA hierarchy. The solutions we proposed introduce redundancy at different levels, playing on the tradeoff between overhead and correction capability.
 
 # Repository structure
-![ALT](/media/images/gemm-hierarchy-with-epilogue-no-labels.png "Complete CUDA GEMM decomposition")
-
-# Triple Modular Redundancy in CUTLASS 3.3
-This repository shows four different implementations of a TMR mechanism to improve the reliability of matrix multiplications. The library that has been used as a reference is [CUTLASS](https://github.com/NVIDIA/cutlass), an open-source repository which fully exploits GPU capabilities by decomposing the problem in multiple parts, each one to be executed at a certain abstraction level in the CUDA hierarchy. The solutions we proposed introduce redundancy at different levels, playing on the tradeoff between overhead and correction capability.
-
-# Repository structure
 
 Since different solutions require introducing modifications in different parts of the whole library, we decided to allocate them in different branches. The tree we decided to implement for this repository is shown here:
 
