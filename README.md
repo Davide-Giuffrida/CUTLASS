@@ -1,30 +1,102 @@
 ![ALT](/media/images/gemm-hierarchy-with-epilogue-no-labels.png "Complete CUDA GEMM decomposition")
 
 # Triple Modular Redundancy in CUTLASS 3.3
-This repository shows four different implementations of a TMR mechanism to improve the reliability of matrix multiplications. The library that has been used as a reference is [CUTLASS](https://github.com/NVIDIA/cutlass), an open-source repository which fully exploits GPU capabilities by decomposing the problem in multiple parts, each one to be executed at a certain abstraction level in the CUDA hierarchy. The solutions we proposed introduce redundancy at different levels, playing on the tradeoff between overhead and correction capability.
+This repository provides four different implementations of TMR that aim to improve the reliability of matrix-matrix multiplications (GEMM). The library that has been used as a reference is [CUTLASS](https://github.com/NVIDIA/cutlass), an open-source repository which fully exploits GPU capabilities by decomposing the GEMM problem in multiple parts, each one to be executed at a certain abstraction level of the CUDA hierarchy. The proposed solutions introduce redundancy at different levels, playing on the tradeoff between overhead and detection and correction capabilities.
 
-# Repository structure
+## Repository structure
 
-Since different solutions require introducing modifications in different parts of the whole library, we decided to allocate them in different branches. The tree we decided to implement for this repository is shown here:
+The solutions are integrated in the library structure so their implementation requires to modify different levels of the library. For this reason, we decided to allocate each solution in a different branch. The organization of the branches is reported below:
 
-- branch [TMR_at_the_kernel_call_level](https://github.com/Davide-Giuffrida/CUTLASS/tree/TMR_at_the_kernel_call_level) shows a first simple implementation at the highest possible abstraction level, consisting of 3 kernel calls and comparisons to be performed on the 3 results.
+- [TMR_at_the_kernel_call_level](https://github.com/Davide-Giuffrida/CUTLASS/tree/TMR_at_the_kernel_call_level) provides a simple implementation at the highest abstraction level. The solution consists of 3 kernel calls and comparisons of the results.
 
-- in branch [TMR_in_the_same_SM](https://github.com/Davide-Giuffrida/CUTLASS/tree/TMR_in_the_same_SM) we moved the repetitions and the comparisons inside the kernel, replicating each one of the intermediate warp-level computations 3 times in a row and checking the results afterward. In this case we increase the correction capability, since we perform multiple checks during the overall algorithm, but in turn we negatively affect the overhead.
+- In [TMR_in_the_same_SM](https://github.com/Davide-Giuffrida/CUTLASS/tree/TMR_in_the_same_SM) we moved the redundant computations and the comparisons inside the kernel, replicating each one of the intermediate warp-level computations 3 times in a row and checking the results afterward. In this case, the correction capability increases but, since we perform multiple checks during the overall algorithm, the overhead is worsened.
 
-- branch [TMR_with_additional_blocks](https://github.com/Davide-Giuffrida/CUTLASS/tree/TMR_with_additional_blocks) is dedicated to a third implementation which divides the execution in checkpoints and assigns the resulting parts to separate kernels, to be executed in series one after the others. During each one of the resulting steps 3 TMR kernels are invoked to be executed on different streams, in order to increase the probability of scheduling TMR instances on different SMs. This approach combines advantages and disadvantages of the previous solutions, being as resistant to permanent faults as the first solution but also adding overhead due to mutliple comparisons in correspondence of checkpoints.
+- The solution in [TMR_with_additional_blocks](https://github.com/Davide-Giuffrida/CUTLASS/tree/TMR_with_additional_blocks) divides the execution in checkpoints and assigns the resulting parts to separate kernels, to be executed in series one after the others. During each one of the resulting steps 3 TMR kernels are invoked to be executed on different streams, in order to increase the probability of scheduling TMR instances on different SMs. This approach combines advantages and disadvantages of the previous solutions, being as resistant to permanent faults as the first solution but also adding overhead due to multiple comparisons in correspondence of the checkpoints.
 
-- in branch [cooperative_groups](https://github.com/Davide-Giuffrida/CUTLASS/tree/cooperative_groups) a permanent-fault tolerant solution is proposed, which also tries to maximize GPU usage in accordance to some constraints. The bulk of this implementation consists in dividing the matrix in tiles assigned to different kernel calls, so that each threadblock scheduled as part of a kernel is always present on the GPU during the kernel execution. This condition holds only if the number of threadblocks is lower than or equal to the number of SMs, and it is necessary to implement a threadblock-level synchronization primitive. Each kernel computes the tile assigned to it in exactly 3 copies, the TMR instances, assigned to different threadblocks. Comparisons between different threadblocks intermediate results are done in correspondence of checkpoints by enforcing cooperative groups based synchronization.
+- The branch [cooperative_groups](https://github.com/Davide-Giuffrida/CUTLASS/tree/cooperative_groups) implements a solution that improves the reliability when permanent faults are considered and also tries to maximize GPU usage in accordance to some constraints. The bulk of this implementation consists in dividing the matrix in tiles assigned to different kernel calls, so that each threadblock scheduled as part of a kernel is always present on the GPU during the kernel execution. This condition holds only if the number of threadblocks is lower than or equal to the number of SMs and it is necessary to implement a threadblock-level synchronization. Each kernel computes a tile 3 times, assigning a TMR instance of the whole tile, or part of it if the tile is divided in sub-blocks, to different threadblocks. Comparisons between different threadblocks intermediate results are done in correspondence of checkpoints by enforcing cooperative groups based synchronization.
 
 Which solution to choose depends on the requirements for each specific applications, keeping into account the frequency at which faults can occur, the resistance to permanent and transient faults but also the overhead introduced by comparisons in correspondence of multiple checkpoints.
 
-# Template used for testing the solutions
-In order to assess the correctness of each implementation we performed testing over a basic GEMM computation program, [the one provided as part of the CUDA examples suite](examples/00_basic_gemm/basic_gemm.cu). Since we had to test the tensor core usage, the example has been modified slightly to include tensor cores related classes in the Gemm class declaration.
+## Template used for testing the solutions
+In order to assess the correctness of each implementation we performed testing over [the basic GEMM computation program provided as part of the CUDA examples suite](examples/00_basic_gemm/basic_gemm.cu). Since we had to test the tensor core usage, the example has been slightly modified to include tensor cores related classes in the Gemm class declaration.
 
-# Limitations
-Up to now, the TMR implementation over the library works only with row-major matrices. A simple way to generalize our code could be the one to produce a generic interface for any format, which is in charge of translating any kind of combination of input matrices formats to the purely row-major one.
-Another limitation is related to the depth of the checkpointing mechanism, since until now the number of checkpoints is imply given by the number of iterations in the computation of a threadblock. Going deeper would require to change the warp level implementation, which should simply require moving the TMR code deeper in the hierarchy and fixing the datatypes appropriately (since tiles related to different levels are named differently).  
+## Limitations
+Up to now, the TMR implementation over the library works only with row-major matrices. A simple way to generalize our code could be to implement a generic interface for any format, which is in charge of translating any kind of combination of input matrices formats to the purely row-major one.
+Another limitation is related to the depth of the checkpoint mechanism, since until now the number of checkpoints is simply given by the number of iterations in the computation of a threadblock. Going deeper would require to change the warp-level implementation. This should require to move the TMR code deeper in the hierarchy and to appropriately fix the datatypes since tiles related to different levels are named differently.  
+
+## Documentation
+The TMR solutions proposed in this library are documented in details in the [report][] we wrote as part of the assignment for the "GPU programming" course held in Politecnico di Torino.
 
 The following sections are part of the original CUTLASS documentation.
+
+# CUTLASS 3.3
+
+_CUTLASS 3.3 - October 2023_
+
+CUTLASS is a collection of CUDA C++ template abstractions for implementing
+high-performance matrix-matrix multiplication (GEMM) and related computations at all levels 
+and scales within CUDA. It incorporates strategies for hierarchical decomposition and 
+data movement similar to those used to implement cuBLAS and cuDNN.  CUTLASS decomposes 
+these "moving parts" into reusable, modular software components abstracted by C++ template 
+classes.  Primitives for different levels of a conceptual parallelization hierarchy
+can be specialized and tuned via custom tiling sizes, data types,
+and other algorithmic policy. The resulting flexibility simplifies their use
+as building blocks within custom kernels and applications.
+
+To support a wide variety of applications, CUTLASS provides extensive support for
+mixed-precision computations, providing specialized data-movement and
+multiply-accumulate abstractions for half-precision floating
+point (FP16), BFloat16 (BF16), Tensor Float 32 (TF32),
+single-precision floating point (FP32),
+[FP32 emulation via tensor core instruction](/examples/27_ampere_3xtf32_fast_accurate_tensorop_gemm),
+double-precision floating
+point (FP64) types, integer data types (4b and 8b), and binary data types (1b).
+CUTLASS demonstrates warp-synchronous matrix multiply operations
+targeting the programmable, high-throughput _Tensor Cores_ implemented by
+NVIDIA's Volta, Turing, Ampere, and Hopper architectures.
+
+See the [Quick Start Guide](/media/docs/quickstart.md) to get started quickly.
+
+See the [functionality listing](/media/docs/functionality.md) for the list of operations
+supported at each level of the execution model hierarchy.
+
+CUTLASS 3.0 introduced a new core library, CuTe, to describe and manipulate tensors of threads and data.
+CuTe is a collection of C++ CUDA template abstractions for defining and operating on hierarchically multidimensional layouts of threads and data. CuTe provides `Layout` and `Tensor` objects that compactly package the type, shape, memory space, and layout of data, while performing the complicated indexing for the user. This lets programmers focus on the logical descriptions of their algorithms while CuTe does the mechanical bookkeeping for them. With these tools, we can quickly design, implement, and modify all dense linear algebra operations.
+
+The core abstractions of CuTe are hierarchically multidimensional layouts which can be composed with data arrays to represent tensors. The representation of layouts is powerful enough to represent nearly everything we need to implement efficient dense linear algebra. Layouts can also be combined and manipulated via functional composition, on which we build a large set of common operations such as tiling and partitioning.
+
+CUTLASS 3.0 and beyond adopts CuTe throughout the GEMM hierarchy in its templates. This greatly simplifies the design
+and improves code composability and readability. More documentation specific to CuTe can be found in its [dedicated documentation directory](/media/docs/cute/00_quickstart.md).
+
+In addition to GEMMs, CUTLASS implements high-performance convolution via the implicit GEMM algorithm. Implicit GEMM is the formulation of a convolution operation as a GEMM thereby taking advantage of CUTLASS's modular GEMM pipeline. This allows CUTLASS to build convolutions by reusing highly-optimized GEMM components.
+
+# What's New in CUTLASS 3.3
+
+CUTLASS 3.3.0 is an update to CUTLASS adding:
+
+- New [Mixed-input Hopper GEMMs](/examples/55_hopper_mixed_dtype_gemm) support covering 16-bit x 8-bit input types with optimal performance.
+- New [Mixed-input Ampere GEMMs](https://github.com/NVIDIA/cutlass/pull/1084) with support for canonical layouts (TN). The implementation supports upcast on operandB {fp16, bf16} x {s8, u8} and upcast on operandA {s8, u8} x {fp16, bf16}. They also include fast numeric conversion recipes and warp level shuffles to achieve optimal performance.
+- New [Copy Async based Hopper GEMMs](/test/unit/gemm/device/sm90_gemm_bf16_bf16_bf16_alignx_tensor_op_f32_warpspecialized_cooperative.cu) - which support lower than 16B aligned input tensors (across s8/fp8/fp16/bf16/tf32 types) with optimal performance. As a part of this, new kernel schedules, and Copy Ops [SM80\_CP\_ASYNC\_CACHE\_\*](/include/cute/arch/copy_sm80.hpp) were also added.
+- EVT Support for RELU with Aux bitmap tensor store (used in dRELU). See [SM90 EVT fusions](/include/cutlass/epilogue/fusion/sm90_visitor_compute_tma_warpspecialized.hpp) for details.
+- Various subbyte enhancements like tagged device ptrs, support for vectorized copy, various operators to treat subbyte iterators as pointers, and full-fledged CuTe Tensor support.
+- Support for Clang as a host compiler. 
+- Support for void-C kernels and SM80 mixed-input GEMMs in the CUTLASS Python interface
+
+Minimum requirements:
+
+- Architecture: Volta
+- Compiler: Must support at least C++17
+- CUDA Toolkit version: 11.4
+
+Starting from CUTLASS 3.0, CUTLASS removed support for the following:
+
+- Maxwell and Pascal GPU architectures
+- Ubuntu 16.04
+- CUDA 10.2
+- C++ language versions less than 17.
+
+**See the [CHANGELOG](CHANGELOG.md) for a detailed listing of releases and updates.**
+
 # Performance
 
 <p align="center"><img src=media/images/cutlass-3.1-gemm-peak-performance.png></p>
@@ -98,7 +170,34 @@ Please refer to the [functionality documentation](media/docs/functionality.md) f
 
 # Documentation
 
-The TMR solutions proposed in this library are documented in details in a [report][] we wrote as part of the assignment for the "GPU programming" course held in Politecnico di Torino.
+CUTLASS is described in the following documents and the accompanying
+[Doxygen documentation](https://nvidia.github.io/cutlass).
+
+- [Quick Start Guide](/media/docs/quickstart.md) - build and run CUTLASS
+- [Functionality](/media/docs/functionality.md) - summarizes functionality available in CUTLASS
+- [Efficient GEMM in CUDA](media/docs/efficient_gemm.md) - describes how GEMM kernels may be implemented efficiently in CUDA
+- [CUTLASS 3.x Design](media/docs/cutlass_3x_design.md) - describes the CUTLASS 3.x design, its benefits, and how CuTe enables us to write much more composable components
+- [GEMM API 3.x](media/docs/gemm_api_3x.md) - describes the CUTLASS 3.x GEMM model and C++ template concepts
+- [GEMM API 2.x](media/docs/gemm_api.md) - describes the CUTLASS 2.x GEMM model and C++ template concepts
+- [Implicit GEMM Convolution](media/docs/implicit_gemm_convolution.md) - describes 2-D and 3-D convolution in CUTLASS
+- [Code Organization](media/docs/code_organization.md) - describes the organization and contents of the CUTLASS project
+- [Terminology](media/docs/terminology.md) - describes terms used in the code
+- [Programming Guidelines](media/docs/programming_guidelines.md) - guidelines for writing efficient modern CUDA C++
+- [Fundamental types](media/docs/fundamental_types.md) - describes basic C++ classes used in CUTLASS to represent numeric quantities and arrays
+- [Layouts](media/docs/layout.md) - describes layouts of matrices and tensors in memory
+- [Tile Iterators](media/docs/tile_iterator_concept.md) - describes C++ concepts for iterating over tiles of matrices in memory
+- [CUTLASS Profiler](media/docs/profiler.md) - command-line driven profiling application
+- [CUTLASS Utilities](media/docs/utilities.md) - additional templates used to facilate rapid development
+
+# Resources
+We have also described the structure of an efficient GEMM in our talk at the
+[GPU Technology Conference 2018](http://on-demand.gputechconf.com/gtc/2018/presentation/s8854-cutlass-software-primitives-for-dense-linear-algebra-at-all-levels-and-scales-within-cuda.pdf).
+
+ - [CUTLASS: Software Primitives for Dense Linear Algebra at All Levels and Scales within CUDA](https://www.nvidia.com/en-us/on-demand/session/gtcsiliconvalley2018-s8854/)
+ - [Developing CUDA Kernels to Push Tensor Cores to the Absolute Limit on NVIDIA A100](https://www.nvidia.com/en-us/on-demand/session/gtcsj20-s21745/)
+ - [Accelerating Convolution with Tensor Cores in CUTLASS](https://www.nvidia.com/en-us/on-demand/session/gtcspring21-s31883/)
+ - [Accelerating Backward Data Gradient by Increasing Tensor Core Utilization in CUTLASS](https://www.nvidia.com/en-us/on-demand/session/gtcspring22-s41996/)
+ - [CUTLASS: Python API, Enhancements, and NVIDIA Hopper](https://www.nvidia.com/en-us/on-demand/session/gtcfall22-a41131/)
 
 # Building CUTLASS
 
