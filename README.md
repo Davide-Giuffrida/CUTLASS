@@ -28,7 +28,7 @@ Up to now, the TMR implementation over the library works only with row-major mat
 Another limitation is related to the depth of the checkpoint mechanism, since until now the number of checkpoints is simply given by the number of iterations in the computation of a threadblock. Going deeper would require to change the warp-level implementation. This should require to move the TMR code deeper in the hierarchy and to appropriately fix the datatypes since tiles related to different levels are named differently.  
 
 ## Documentation
-The TMR solutions proposed in this library are documented in details in the [report][] we wrote as part of the assignment for the "GPU programming" course held in Politecnico di Torino.
+The TMR solutions proposed in this library are documented in details in the [report](Report.pdf) we wrote as part of the assignment for the "GPU programming" course held in Politecnico di Torino.
 
 The following sections are part of the original CUTLASS documentation.
 
